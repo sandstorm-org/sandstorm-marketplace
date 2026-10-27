@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 use marketplace_model::app_index::{AppDetailsForMarket, AppIndexForMarket, LoadedAppIndex};
 use reqwest::Client;
@@ -190,6 +190,80 @@ async fn fetch_bytes(client: &Client, url: &str) -> Result<Vec<u8>> {
     Ok(response.bytes().await?.to_vec())
 }
 
+const DOWNLOAD_ATTEMPTS: u32 = 4;
+
+fn retryable_download_error(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<reqwest::Error>().is_some_and(|error| {
+        if let Some(status) = error.status() {
+            status.is_server_error()
+                || status == reqwest::StatusCode::REQUEST_TIMEOUT
+                || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        } else {
+            error.is_connect() || error.is_timeout() || error.is_body() || error.is_decode()
+        }
+    })
+}
+
+async fn download_spk(
+    client: &Client,
+    url: &str,
+    archived_bytes: u64,
+) -> Result<(std::fs::File, u64)> {
+    for attempt in 1..=DOWNLOAD_ATTEMPTS {
+        match download_spk_once(client, url, archived_bytes).await {
+            Ok(download) => return Ok(download),
+            Err(error) => {
+                if attempt == DOWNLOAD_ATTEMPTS || !retryable_download_error(&error) {
+                    return Err(error).with_context(|| {
+                        format!("downloading SPK {url} failed after {attempt} attempt(s)")
+                    });
+                }
+                let delay_secs = 1u64 << (attempt - 1);
+                tracing::warn!(url, attempt, max_attempts = DOWNLOAD_ATTEMPTS, delay_secs, error = ?error, "SPK download failed; retrying from the beginning");
+                tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+            }
+        }
+    }
+    unreachable!()
+}
+
+async fn download_spk_once(
+    client: &Client,
+    url: &str,
+    archived_bytes: u64,
+) -> Result<(std::fs::File, u64)> {
+    use std::io::Write;
+
+    let started = std::time::Instant::now();
+    let mut last_progress = started;
+    let mut response = client.get(url).send().await?.error_for_status()?;
+    let expected_bytes = response.content_length();
+    tracing::info!(url, ?expected_bytes, "SPK response received");
+    // A failed attempt drops its partial file and never contributes to archive size.
+    let mut file = tempfile::tempfile()?;
+    let mut size = 0u64;
+    while let Some(chunk) = response.chunk().await? {
+        size += chunk.len() as u64;
+        ensure!(size <= 1024 * 1024 * 1024, "SPK exceeds 1 GiB");
+        ensure!(
+            archived_bytes + size < 16 * 1024 * 1024 * 1024 - 64 * 1024 * 1024,
+            "import exceeds 16 GiB limit"
+        );
+        file.write_all(&chunk)?;
+        if last_progress.elapsed() >= std::time::Duration::from_secs(5) {
+            tracing::info!(
+                url,
+                bytes = size,
+                ?expected_bytes,
+                elapsed_secs = started.elapsed().as_secs(),
+                "SPK download progress"
+            );
+            last_progress = std::time::Instant::now();
+        }
+    }
+    Ok((file, size))
+}
+
 #[tracing::instrument(skip_all, err(Debug))]
 async fn create_import(
     base_url: &str,
@@ -200,7 +274,6 @@ async fn create_import(
     let started = std::time::Instant::now();
     tracing::info!(output = %destination.display(), "Building import tarball");
     use marketplace_model::app_index::AppIndexForMarket;
-    use std::io::Write;
     let parent = destination
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -236,31 +309,10 @@ async fn create_import(
     let mut total = 0u64;
     for (number, id) in ids.iter().enumerate() {
         let download_started = std::time::Instant::now();
-        let mut last_progress = download_started;
         tracing::info!(current = number + 1, total = ids.len(), package_id = %id, "Downloading SPK");
-        let mut response = client
-            .get(format!("{}/packages/{id}", base_url.trim_end_matches('/')))
-            .send()
-            .await?
-            .error_for_status()?;
-        let expected_bytes = response.content_length();
-        tracing::info!(package_id = %id, ?expected_bytes, "SPK response received");
-        let mut file = tempfile::tempfile()?;
-        let mut size = 0u64;
-        while let Some(chunk) = response.chunk().await? {
-            size += chunk.len() as u64;
-            total += chunk.len() as u64;
-            ensure!(size <= 1024 * 1024 * 1024, "SPK exceeds 1 GiB");
-            ensure!(
-                total < 16 * 1024 * 1024 * 1024 - 64 * 1024 * 1024,
-                "import exceeds 16 GiB limit"
-            );
-            file.write_all(&chunk)?;
-            if last_progress.elapsed() >= std::time::Duration::from_secs(5) {
-                tracing::info!(package_id = %id, bytes = size, ?expected_bytes, elapsed_secs = download_started.elapsed().as_secs(), "SPK download progress");
-                last_progress = std::time::Instant::now();
-            }
-        }
+        let url = format!("{}/packages/{id}", base_url.trim_end_matches('/'));
+        let (mut file, size) = download_spk(&client, &url, total).await?;
+        total += size;
         std::io::Seek::rewind(&mut file)?;
         let mut header = tar::Header::new_gnu();
         header.set_size(size);
@@ -376,6 +428,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn interrupted_download_stops_after_four_attempts() -> Result<()> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let url = format!("http://{}/packages/test", listener.local_addr()?);
+        let server = std::thread::spawn(move || {
+            for _ in 0..DOWNLOAD_ATTEMPTS {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+                    .unwrap();
+                let mut request = [0; 4096];
+                stream.read(&mut request).unwrap();
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\ncut"
+                )
+                .unwrap();
+            }
+        });
+        let error = download_spk(&Client::new(), &url, 0).await.unwrap_err();
+        assert!(error.to_string().contains("failed after 4 attempt(s)"));
+        assert!(error.to_string().contains(&url));
+        server.join().unwrap();
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn import_tarball_downloads_packages_and_finishes_atomically() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let catalog = dir.path().join("catalog");
@@ -386,7 +464,12 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         let url = format!("http://{}", listener.local_addr()?);
         let server = std::thread::spawn(move || {
-            for status in ["200 OK", "404 Not Found"] {
+            for (status, body) in [
+                ("200 OK", "cut"),
+                ("503 Service Unavailable", "fixture"),
+                ("200 OK", "fixture"),
+                ("404 Not Found", "fixture"),
+            ] {
                 let (mut stream, _) = listener.accept().unwrap();
                 stream
                     .set_read_timeout(Some(std::time::Duration::from_secs(10)))
@@ -399,7 +482,7 @@ mod tests {
                 );
                 write!(
                     stream,
-                    "HTTP/1.1 {status}\r\nContent-Length: 7\r\nConnection: close\r\n\r\nfixture"
+                    "HTTP/1.1 {status}\r\nContent-Length: 7\r\nConnection: close\r\n\r\n{body}"
                 )
                 .unwrap();
             }
