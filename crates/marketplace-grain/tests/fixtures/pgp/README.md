@@ -22,3 +22,14 @@ The keyring includes a self-certified user ID plus nine third-party
 certifications. Passing all of these to rPGP's self-signature verifier fails
 with an issuer mismatch. The fixtures contain no private keys or application
 code. Sandstorm's `spk verify` accepts the original package.
+
+`desert-atlas-public-key.pgp` and `desert-atlas-proof.pgp` are the unmodified
+public keyring and BZip2-compressed author proof extracted from Desert Atlas:
+https://app-index.sandstorm.io/packages/fbc68a54911fbf5391c4ebd27ef8090a
+
+App ID: `e5eaqnrqfrhgax1awtgw9uqayg42kcen2gkpynjs3j5mww7w3rp0`
+SDK-verified fingerprint: `D05323BE2C75094F7BA017A701B0AEB646A0DF80`
+
+These reproduce “unsupported compression algorithm BZip2” when the PGP
+library's optional BZip2 support is disabled. No private keys or application
+files are included.

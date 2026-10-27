@@ -296,6 +296,18 @@ mod tests {
     const MEDIAWIKI_FINGERPRINT: &str = "C0B2C432638DAEB0D70715C7F654B8C7D4CA3CB8";
 
     #[test]
+    fn verifies_bzip2_author_proof() -> Result<()> {
+        let proof = include_bytes!("../tests/fixtures/pgp/desert-atlas-proof.pgp");
+        let key = include_bytes!("../tests/fixtures/pgp/desert-atlas-public-key.pgp");
+        let app = "e5eaqnrqfrhgax1awtgw9uqayg42kcen2gkpynjs3j5mww7w3rp0";
+        assert_eq!(
+            verify_pgp(app, proof, key)?,
+            "D05323BE2C75094F7BA017A701B0AEB646A0DF80"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn author_key_accepts_third_party_certifications_without_trusting_them() -> Result<()> {
         use pgp::{ser::Serialize, types::KeyDetails};
         let mut key = SignedPublicKey::from_bytes(MEDIAWIKI_KEY)?;

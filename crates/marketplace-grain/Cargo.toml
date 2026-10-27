@@ -25,7 +25,8 @@ base64 = "0.23"
 lzma-rust2 = "0.23"
 # Legacy Keybase proofs use short initial partial-body chunks accepted by GnuPG.
 # This enables parsing compatibility; cryptographic signature checks still apply.
-pgp = { version = "0.21", default-features = false, features = ["malformed-artifact-compat"] }
+# Some author proofs (including Desert Atlas) use BZip2 compression.
+pgp = { version = "0.21", default-features = false, features = ["bzip2", "malformed-artifact-compat"] }
 tempfile = "3"
 tar = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
