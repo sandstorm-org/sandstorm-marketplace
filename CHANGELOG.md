@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6 — 2026-10-27
+
+- Made the public header search focus outline surround both the input and button.
+- Kept category focus outlines visible inside the scrolling header navigation.
+- Adjusted the header logo’s vertical alignment.
+
 ## 0.4.5 — 2026-10-27
 
 - Added a Homepage tab to pin, reorder, and hide published apps.
