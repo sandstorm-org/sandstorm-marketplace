@@ -22,7 +22,7 @@ enum Command {
         output_dir: PathBuf,
         #[arg(long, default_value_t = true)]
         include_experimental: bool,
-        /// Also download referenced SPKs and build an empty-grain import archive.
+        /// Also build an empty-grain import archive from the cached SPKs.
         #[arg(long)]
         tarball: Option<PathBuf>,
         /// Maximum total catalog releases; approved first, then experimental.
@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
         } => {
             sync_remote(&base_url, &output_dir, include_experimental, limit).await?;
             if let Some(path) = tarball {
-                create_import(&base_url, &output_dir, include_experimental, &path).await?;
+                create_import(&output_dir, include_experimental, &path).await?;
             }
         }
     }
@@ -180,6 +180,8 @@ async fn sync_remote(
         fs::write(output_dir.join("images").join(image_id), image_bytes).await?;
     }
 
+    sync_packages(&client, base_url, output_dir, include_experimental).await?;
+
     tracing::info!(apps = loaded.index.apps.len(), images = image_ids.len(), output = %output_dir.display(), elapsed_ms = started.elapsed().as_millis() as u64, "Catalog sync complete");
 
     Ok(())
@@ -207,10 +209,10 @@ fn retryable_download_error(error: &anyhow::Error) -> bool {
 async fn download_spk(
     client: &Client,
     url: &str,
-    archived_bytes: u64,
-) -> Result<(std::fs::File, u64)> {
+    packages: &Path,
+) -> Result<(tempfile::NamedTempFile, u64)> {
     for attempt in 1..=DOWNLOAD_ATTEMPTS {
-        match download_spk_once(client, url, archived_bytes).await {
+        match download_spk_once(client, url, packages).await {
             Ok(download) => return Ok(download),
             Err(error) => {
                 if attempt == DOWNLOAD_ATTEMPTS || !retryable_download_error(&error) {
@@ -230,8 +232,8 @@ async fn download_spk(
 async fn download_spk_once(
     client: &Client,
     url: &str,
-    archived_bytes: u64,
-) -> Result<(std::fs::File, u64)> {
+    packages: &Path,
+) -> Result<(tempfile::NamedTempFile, u64)> {
     use std::io::Write;
 
     let started = std::time::Instant::now();
@@ -240,15 +242,11 @@ async fn download_spk_once(
     let expected_bytes = response.content_length();
     tracing::info!(url, ?expected_bytes, "SPK response received");
     // A failed attempt drops its partial file and never contributes to archive size.
-    let mut file = tempfile::tempfile()?;
+    let mut file = tempfile::NamedTempFile::new_in(packages)?;
     let mut size = 0u64;
     while let Some(chunk) = response.chunk().await? {
         size += chunk.len() as u64;
         ensure!(size <= 1024 * 1024 * 1024, "SPK exceeds 1 GiB");
-        ensure!(
-            archived_bytes + size < 16 * 1024 * 1024 * 1024 - 64 * 1024 * 1024,
-            "import exceeds 16 GiB limit"
-        );
         file.write_all(&chunk)?;
         if last_progress.elapsed() >= std::time::Duration::from_secs(5) {
             tracing::info!(
@@ -264,31 +262,14 @@ async fn download_spk_once(
     Ok((file, size))
 }
 
-#[tracing::instrument(skip_all, err(Debug))]
-async fn create_import(
-    base_url: &str,
-    catalog: &Path,
-    experimental: bool,
-    destination: &Path,
-) -> Result<()> {
-    let started = std::time::Instant::now();
-    tracing::info!(output = %destination.display(), "Building import tarball");
-    use marketplace_model::app_index::AppIndexForMarket;
-    let parent = destination
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    fs::create_dir_all(parent).await?;
-    let output = tempfile::NamedTempFile::new_in(parent)?;
-    let mut archive = tar::Builder::new(output);
+async fn catalog_package_ids(catalog: &Path, experimental: bool) -> Result<BTreeSet<String>> {
     let mut ids = BTreeSet::new();
     for name in ["apps/index.json", "experimental/index.json"] {
         if name.starts_with("experimental/") && !experimental {
             continue;
         }
-        let path = catalog.join(name);
-        let bytes = fs::read(&path).await?;
-        let index: AppIndexForMarket = serde_json::from_slice(&bytes)?;
+        let index: AppIndexForMarket =
+            serde_json::from_slice(&fs::read(catalog.join(name)).await?)?;
         for app in index.apps {
             ensure!(
                 app.package_id.len() == 32
@@ -300,26 +281,86 @@ async fn create_import(
             );
             ensure!(ids.insert(app.package_id), "duplicate package in catalog");
         }
-        archive.append_path_with_name(path, name)?;
     }
-    ensure!(!ids.is_empty(), "catalog contains no packages");
-    let client = Client::builder()
-        .user_agent("sandstorm-marketplace-sync/0.1")
-        .build()?;
-    let mut total = 0u64;
+    Ok(ids)
+}
+
+async fn sync_packages(
+    client: &Client,
+    base_url: &str,
+    catalog: &Path,
+    experimental: bool,
+) -> Result<()> {
+    let ids = catalog_package_ids(catalog, experimental).await?;
+    let packages = catalog.join("packages");
+    fs::create_dir_all(&packages).await?;
     for (number, id) in ids.iter().enumerate() {
-        let download_started = std::time::Instant::now();
+        let destination = packages.join(id);
+        match fs::symlink_metadata(&destination).await {
+            Ok(metadata) => {
+                ensure!(
+                    metadata.is_file()
+                        && metadata.len() > 0
+                        && metadata.len() <= 1024 * 1024 * 1024,
+                    "invalid cached SPK {}",
+                    destination.display()
+                );
+                tracing::info!(current = number + 1, total = ids.len(), package_id = %id, "Using cached SPK");
+                continue;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         tracing::info!(current = number + 1, total = ids.len(), package_id = %id, "Downloading SPK");
         let url = format!("{}/packages/{id}", base_url.trim_end_matches('/'));
-        let (mut file, size) = download_spk(&client, &url, total).await?;
+        let (file, size) = download_spk(client, &url, &packages).await?;
+        ensure!(size > 0, "empty SPK {id}");
+        file.as_file().sync_all()?;
+        file.persist(&destination)?;
+        tracing::info!(package_id = %id, bytes = size, "SPK cached");
+    }
+    Ok(())
+}
+
+#[tracing::instrument(skip_all, err(Debug))]
+async fn create_import(catalog: &Path, experimental: bool, destination: &Path) -> Result<()> {
+    let started = std::time::Instant::now();
+    tracing::info!(output = %destination.display(), "Building import tarball");
+    let parent = destination
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    fs::create_dir_all(parent).await?;
+    let output = tempfile::NamedTempFile::new_in(parent)?;
+    let mut archive = tar::Builder::new(output);
+    let ids = catalog_package_ids(catalog, experimental).await?;
+    ensure!(!ids.is_empty(), "catalog contains no packages");
+    for name in ["apps/index.json", "experimental/index.json"] {
+        if name.starts_with("experimental/") && !experimental {
+            continue;
+        }
+        archive.append_path_with_name(catalog.join(name), name)?;
+    }
+    let mut total = 0u64;
+    for (number, id) in ids.iter().enumerate() {
+        let file = std::fs::File::open(catalog.join("packages").join(id))
+            .with_context(|| format!("opening cached SPK {id}"))?;
+        let size = file.metadata()?.len();
+        ensure!(
+            size > 0 && size <= 1024 * 1024 * 1024,
+            "invalid cached SPK size for {id}"
+        );
         total += size;
-        std::io::Seek::rewind(&mut file)?;
+        ensure!(
+            total < 16 * 1024 * 1024 * 1024 - 64 * 1024 * 1024,
+            "import exceeds 16 GiB limit"
+        );
         let mut header = tar::Header::new_gnu();
         header.set_size(size);
         header.set_mode(0o644);
         header.set_cksum();
         archive.append_data(&mut header, format!("packages/{id}"), file)?;
-        tracing::info!(package_id = %id, bytes = size, elapsed_ms = download_started.elapsed().as_millis() as u64, "SPK downloaded and archived");
+        tracing::info!(current = number + 1, total = ids.len(), package_id = %id, bytes = size, "Cached SPK archived");
     }
     tracing::info!(bytes = total, "Finalizing tarball");
     let output = archive.into_inner()?;
@@ -345,6 +386,10 @@ mod tests {
             for (path, body) in [
                 ("/apps/index.json", index.to_string()),
                 ("/apps/a.json", "{}".to_owned()),
+                (
+                    "/packages/0123456789abcdef0123456789abcdef",
+                    "fixture".to_owned(),
+                ),
             ] {
                 let (mut stream, _) = listener.accept().unwrap();
                 stream
@@ -365,6 +410,10 @@ mod tests {
         });
         sync_remote(&url, dir.path(), true, Some(1)).await?;
         server.join().unwrap();
+        assert_eq!(
+            fs::read(dir.path().join("packages/0123456789abcdef0123456789abcdef")).await?,
+            b"fixture"
+        );
         let approved = LoadedAppIndex::load(dir.path())?;
         assert_eq!(approved.index.apps.len(), 1);
         assert_eq!(approved.index.apps[0].app_id, "a");
@@ -397,6 +446,9 @@ mod tests {
             ("/experimental/test.json", serde_json::json!({"description":"Pending description", "screenshots":[{"imageId":"shot.png", "width":1, "height":1}]}).to_string()),
             ("/images/beta.svg", "<svg/>".into()),
             ("/images/shot.png", "fixture".into()),
+            ("/packages/00000000000000000000000000000001", "approved".into()),
+            ("/packages/00000000000000000000000000000002", "pending".into()),
+            ("/packages/00000000000000000000000000000003", "updated".into()),
         ];
         let server = std::thread::spawn(move || {
             for (path, body) in responses {
@@ -418,7 +470,20 @@ mod tests {
             }
         });
         sync_remote(&url, dir.path(), true, None).await?;
+        // A newer release gets a new package ID; only that package is fetched.
+        fs::write(
+            dir.path().join("experimental/index.json"),
+            serde_json::to_vec(&serde_json::json!({"apps":[app(3, "beta.svg")]}))?,
+        )
+        .await?;
+        sync_packages(&Client::new(), &url, dir.path(), true).await?;
         server.join().unwrap();
+        for (id, expected) in [(1, "approved"), (2, "pending"), (3, "updated")] {
+            assert_eq!(
+                fs::read(dir.path().join(format!("packages/{id:032x}"))).await?,
+                expected.as_bytes()
+            );
+        }
         let details: AppDetailsForMarket =
             serde_json::from_slice(&fs::read(dir.path().join("experimental/test.json")).await?)?;
         assert_eq!(details.description, "Pending description");
@@ -446,7 +511,11 @@ mod tests {
                 .unwrap();
             }
         });
-        let error = download_spk(&Client::new(), &url, 0).await.unwrap_err();
+        let packages = tempfile::tempdir()?;
+        let error = download_spk(&Client::new(), &url, packages.path())
+            .await
+            .unwrap_err();
+        assert_eq!(std::fs::read_dir(packages.path())?.count(), 0);
         assert!(error.to_string().contains("failed after 4 attempt(s)"));
         assert!(error.to_string().contains(&url));
         server.join().unwrap();
@@ -454,7 +523,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn import_tarball_downloads_packages_and_finishes_atomically() -> Result<()> {
+    async fn cached_packages_are_reused_and_tarball_finishes_atomically() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let catalog = dir.path().join("catalog");
         fs::create_dir_all(catalog.join("apps")).await?;
@@ -488,7 +557,14 @@ mod tests {
             }
         });
         let output = dir.path().join("import.tar");
-        create_import(&url, &catalog, false, &output).await?;
+        sync_packages(&Client::new(), &url, &catalog, false).await?;
+        assert_eq!(
+            fs::read(catalog.join("packages").join(id)).await?,
+            b"fixture"
+        );
+        // A cached package needs no working server, including when building an archive.
+        sync_packages(&Client::new(), "http://127.0.0.1:0", &catalog, false).await?;
+        create_import(&catalog, false, &output).await?;
         let original = fs::read(&output).await?;
         let mut archive = tar::Archive::new(original.as_slice());
         let mut entries = archive.entries()?;
@@ -505,7 +581,14 @@ mod tests {
         package.read_to_end(&mut bytes)?;
         assert_eq!(bytes, b"fixture");
         assert!(entries.next().is_none());
-        assert!(create_import(&url, &catalog, false, &output).await.is_err());
+        fs::remove_file(catalog.join("packages").join(id)).await?;
+        assert!(
+            sync_packages(&Client::new(), &url, &catalog, false)
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read_dir(catalog.join("packages"))?.count(), 0);
+        assert!(create_import(&catalog, false, &output).await.is_err());
         assert_eq!(fs::read(output).await?, original);
         server.join().unwrap();
         Ok(())

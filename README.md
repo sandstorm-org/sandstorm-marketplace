@@ -250,8 +250,13 @@ cargo run --release -p marketplace-sync -- sync-remote \
 
 The base URL and output directory shown are the defaults. Use `--base-url` to
 copy another compatible public marketplace. This command fetches catalog JSON
-and images into `data/app-index`, then downloads the SPKs referenced by the
-approved and experimental indexes into an **uncompressed `.tar`** archive.
+and images into `data/app-index`, then caches the SPKs referenced by the
+approved and experimental indexes in `data/app-index/packages/<package-id>`.
+SPKs are downloaded even without `--tarball`. Completed cached packages are
+reused; new package IDs are downloaded into temporary files and moved into place
+only after success. Old cached packages are retained when releases change.
+With `--tarball`, the selected cached packages are also copied into an
+**uncompressed `.tar`** archive, requiring space for both the cache and archive.
 The archive contains the indexes and packages; app details and images are
 regenerated from signed package manifests during import.
 
@@ -272,10 +277,10 @@ import fills its grain too; create another empty grain for the full import.
 
 Wait for the command to exit successfully and log **Import tarball ready to
 upload**. The destination tarball is replaced only after generation succeeds;
-a failed run can leave an older tarball at that path. Rerunning downloads the
-selected packages again; it does not resume partial downloads. Reusing an output
-directory can leave old detail/image files, but only releases in the newly saved
-indexes are included in the archive.
+a failed run can leave an older tarball at that path. Rerunning reuses completed
+SPK downloads and fetches only missing packages; partial downloads restart from
+the beginning. Reusing an output directory can leave old packages and detail/image
+files, but only releases in the newly saved indexes are included in the archive.
 
 ### 2. Upload through the grain
 
