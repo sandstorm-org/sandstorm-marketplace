@@ -33,3 +33,10 @@ SDK-verified fingerprint: `D05323BE2C75094F7BA017A701B0AEB646A0DF80`
 These reproduce “unsupported compression algorithm BZip2” when the PGP
 library's optional BZip2 support is disabled. No private keys or application
 files are included.
+
+`cleartext-public-key.pgp` and `cleartext-proof.asc` were generated locally with
+GnuPG using a temporary Ed25519 signing key (whose private material was discarded).
+The proof binds the same app ID as the Keybase fixture above, solely for testing.
+Fingerprint: `3C4B95AB73C5C2C78569EE1BFC3958F76B94294B`.
+They reproduce the packet-message parser's unsupported `CleartextMessage` error
+and exercise cleartext signature verification independently of rPGP's serializer.

@@ -268,19 +268,53 @@ pub(crate) fn pgp_author_name(keyring: &[u8], fingerprint: &str) -> Option<Strin
 
 fn verify_pgp(app_id: &str, signature: &[u8], keyring: &[u8]) -> Result<String> {
     use pgp::{
-        composed::{Deserializable, Message, SignedPublicKey},
+        composed::{CleartextSignedMessage, Deserializable, Message, SignedPublicKey},
         types::KeyDetails,
     };
     ensure!(
         signature.len() <= 1 << 20 && keyring.len() <= 4 << 20,
         "PGP identity data too large"
     );
-    let mut message = Message::from_reader(signature)
-        .context("parsing OpenPGP author proof (binary or ASCII armor)")?
-        .0
-        .decompress()?;
-    let mut content = Vec::new();
-    message.by_ref().take(4097).read_to_end(&mut content)?;
+    // Cleartext signatures have their own framing and canonicalization rules;
+    // the packet-message parser cannot read PGP SIGNED MESSAGE armor.
+    let cleartext = if signature
+        .trim_ascii_start()
+        .starts_with(b"-----BEGIN PGP SIGNED MESSAGE-----")
+    {
+        Some(
+            // rPGP 0.21's trailing-whitespace check examines unused bytes in
+            // its read buffer, so an extra blank line after the armor footer
+            // is incorrectly rejected. Trim only external trailing whitespace;
+            // signed text and any non-whitespace trailing data remain intact.
+            CleartextSignedMessage::from_armor(signature.trim_ascii_end())
+                .context("parsing cleartext OpenPGP author proof")?
+                .0,
+        )
+    } else {
+        None
+    };
+    let mut message = if cleartext.is_none() {
+        Some(
+            Message::from_reader(signature)
+                .context("parsing OpenPGP author proof (binary or ASCII armor)")?
+                .0
+                .decompress()?,
+        )
+    } else {
+        None
+    };
+    let content = if let Some(cleartext) = &cleartext {
+        cleartext.signed_text().into_bytes()
+    } else {
+        let mut content = Vec::new();
+        message
+            .as_mut()
+            .unwrap()
+            .by_ref()
+            .take(4097)
+            .read_to_end(&mut content)?;
+        content
+    };
     ensure!(content.len() <= 4096, "PGP identity message too large");
     ensure!(
         std::str::from_utf8(&content)?.trim()
@@ -293,12 +327,21 @@ fn verify_pgp(app_id: &str, signature: &[u8], keyring: &[u8]) -> Result<String> 
     {
         let mut key = key?;
         verify_pgp_bindings(&mut key)?;
-        if message.verify(&key).is_ok()
-            || key
-                .public_subkeys
-                .iter()
-                .any(|subkey| message.verify(subkey).is_ok())
-        {
+        let valid = if let Some(cleartext) = &cleartext {
+            cleartext.verify(&key).is_ok()
+                || key
+                    .public_subkeys
+                    .iter()
+                    .any(|subkey| cleartext.verify(subkey).is_ok())
+        } else {
+            let message = message.as_ref().unwrap();
+            message.verify(&key).is_ok()
+                || key
+                    .public_subkeys
+                    .iter()
+                    .any(|subkey| message.verify(subkey).is_ok())
+        };
+        if valid {
             return Ok(hex::encode_upper(key.fingerprint().as_bytes()));
         }
     }
@@ -331,6 +374,40 @@ mod tests {
         assert_eq!(pgp_author_name(KEY, MEDIAWIKI_FINGERPRINT), None);
         assert_eq!(pgp_author_name(KEY, ""), None);
         assert_eq!(pgp_author_name(b"invalid", FINGERPRINT), None);
+    }
+
+    #[test]
+    fn verifies_cleartext_author_proofs() -> Result<()> {
+        let proof = include_str!("../tests/fixtures/pgp/cleartext-proof.asc");
+        let key = include_bytes!("../tests/fixtures/pgp/cleartext-public-key.pgp");
+        // GnuPG-generated fixture reproduces the packet parser's original error.
+        assert!(pgp::composed::Message::from_reader(proof.as_bytes()).is_err());
+        let armored_key =
+            SignedPublicKey::from_bytes(&key[..])?.to_armored_bytes(Default::default())?;
+        for proof in [
+            proof.to_owned(),
+            proof.replace('\n', "\r\n"),
+            format!("{proof}\n"),
+            format!("{proof}\r\n \t\r\n"),
+        ] {
+            for key in [&key[..], armored_key.as_slice()] {
+                assert_eq!(
+                    verify_pgp(APP, proof.as_bytes(), key)?,
+                    "3C4B95AB73C5C2C78569EE1BFC3958F76B94294B"
+                );
+                assert!(verify_pgp("another-app", proof.as_bytes(), key).is_err());
+                // The claimed app matches, but the signature covers different text.
+                let tampered = proof.replace(APP, "another-app");
+                assert!(verify_pgp("another-app", tampered.as_bytes(), key).is_err());
+            }
+            assert!(verify_pgp(APP, proof.as_bytes(), KEY).is_err());
+        }
+        let unsigned = proof.split("-----BEGIN PGP SIGNATURE-----").next().unwrap();
+        assert!(verify_pgp(APP, unsigned.as_bytes(), key).is_err());
+        for suffix in ["garbage", "\0", proof] {
+            assert!(verify_pgp(APP, format!("{proof}{suffix}").as_bytes(), key).is_err());
+        }
+        Ok(())
     }
 
     #[test]
