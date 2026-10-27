@@ -5,6 +5,28 @@ use marketplace_model::app_index::{AppDetailsForMarket, AppSummary, Screenshot};
 use sha2::Digest;
 use std::path::Path;
 
+/// Display overrides carried over from the original marketplace. Its indexer
+/// applied /var/descriptions after reading signed metadata (see
+/// sandstorm/app-index/indexer.c++ and ShortDescriptionOverrides in the schema).
+/// These four differences were confirmed against the exported public catalog;
+/// Let's Chat and MediaGoblin predate the required manifest field.
+/// Never rewrite the verified metadata or the signed SPK itself.
+pub(crate) fn short_description<'a>(info: p::verified_info::Reader<'a>) -> Result<&'a str> {
+    let original = info
+        .get_metadata()?
+        .get_short_description()?
+        .get_default_text()?
+        .to_str()?;
+    let app_id = ids::app_id(&ids::app_bytes(info.get_app_id()?));
+    Ok(match app_id.as_str() {
+        "qkgkaxfqhgsff8zgx2f4nf1a8xvmpte6wa19egmfkk06mzt7e8dh" => "Chat room",
+        "70awyqss6jq2gkz7dwzsnvumzr07256pzdt3hda9acfuxwh6uh7h" => "Media sharing",
+        "nn7axgy3y8kvd0m1mtk3cwca34t916p5d7m4j1j2e874nuz3t8y0" => "File sharing",
+        "vxe8awcxvtj6yu0vgjpm1tsaeu7x8v8tfp71tyvnm6ykkephu9q0" => "Note-taking",
+        _ => original,
+    })
+}
+
 pub(crate) struct Entry<'a> {
     pub app: AppSummary,
     pub details: AppDetailsForMarket,
@@ -153,11 +175,7 @@ pub(crate) fn parse<'a>(info: p::verified_info::Reader<'a>, published: i64) -> R
                 .get_upstream_author()?
                 .to_str()?
                 .to_string(),
-            short_description: meta
-                .get_short_description()?
-                .get_default_text()?
-                .to_str()?
-                .to_string(),
+            short_description: short_description(info)?.to_owned(),
             created_at: chrono::DateTime::from_timestamp(published, 0)
                 .context("invalid publish date")?
                 .format("%Y-%m-%dT%H:%M:%SZ")
@@ -219,6 +237,57 @@ const LICENSES: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_descriptions_apply_to_listings_without_changing_verified_metadata() -> Result<()> {
+        for (app_id, original, expected) in [
+            (
+                "qkgkaxfqhgsff8zgx2f4nf1a8xvmpte6wa19egmfkk06mzt7e8dh",
+                "",
+                "Chat room",
+            ),
+            (
+                "70awyqss6jq2gkz7dwzsnvumzr07256pzdt3hda9acfuxwh6uh7h",
+                "",
+                "Media sharing",
+            ),
+            (
+                "nn7axgy3y8kvd0m1mtk3cwca34t916p5d7m4j1j2e874nuz3t8y0",
+                "Drag-n-drop file sharing",
+                "File sharing",
+            ),
+            (
+                "vxe8awcxvtj6yu0vgjpm1tsaeu7x8v8tfp71tyvnm6ykkephu9q0",
+                "Notetaking",
+                "Note-taking",
+            ),
+        ] {
+            let mut message = capnp::message::Builder::new_default();
+            let mut info = message.init_root::<p::verified_info::Builder>();
+            ids::set_app(info.reborrow().init_app_id(), &ids::parse_app_id(app_id)?);
+            info.init_metadata()
+                .init_short_description()
+                .set_default_text(original);
+            let before = crate::database::encode(&message)?;
+            let info = message.get_root_as_reader()?;
+            assert_eq!(short_description(info)?, expected);
+            assert_eq!(parse(info, 0)?.app.short_description, expected);
+            assert_eq!(crate::database::encode(&message)?, before);
+
+            // A different signing identity cannot inherit an allowlisted app's
+            // description, even with identical (or missing) manifest text.
+            ids::set_app(
+                message
+                    .get_root::<p::verified_info::Builder>()?
+                    .init_app_id(),
+                &[42; 32],
+            );
+            let info = message.get_root_as_reader()?;
+            assert_eq!(short_description(info)?, original);
+            assert_eq!(parse(info, 0)?.app.short_description, original);
+        }
+        Ok(())
+    }
 
     #[test]
     fn parsed_assets_are_only_written_when_publishing() -> Result<()> {

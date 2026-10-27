@@ -9,6 +9,12 @@ The Rust grain implements the app-index submission/storage protocols described
 by these schemas. It contains no copied C++ implementation. The SDK remains an
 optional independent reference for interoperability tests.
 
+`catalog.rs` carries the original public catalog's short-description overrides
+for Let's Chat, MediaGoblin, FileDrop, and Paperwork, keyed by app ID. The old
+indexer loaded these separately from `/var/descriptions`; they were not part of
+the signed manifests. Upload validation and listing generation use the same
+overrides, without changing stored verified metadata or SPK bytes.
+
 Local schema adaptations preserve wire IDs and field ordinals:
 
 - Rename the package `categoryInfo` annotation to `categoryTitle` to avoid a Rust

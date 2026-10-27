@@ -190,7 +190,7 @@ impl Registry {
             !metadata.get_categories()?.is_empty(),
             "at least one category required"
         );
-        let short = metadata.get_short_description()?.get_default_text()?;
+        let short = crate::catalog::short_description(info)?;
         ensure!(
             !short.is_empty() && short.len() < 25,
             "short description must contain 1–24 bytes"
