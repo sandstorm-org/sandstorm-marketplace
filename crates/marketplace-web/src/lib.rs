@@ -47,6 +47,9 @@ enum Command {
 #[template(path = "home.html")]
 struct HomeTemplate<'a> {
     show_welcome: bool,
+    author_title: Option<String>,
+    author_profile: Option<AuthorProfile>,
+    unverified_fingerprint: Option<String>,
     experimental: bool,
     search_action: String,
     tags: Vec<TagChip>,
@@ -71,6 +74,8 @@ struct AppTemplate<'a> {
     categories: String,
     updated_at: String,
     author_name: String,
+    author_unverified: bool,
+    author_href: Option<String>,
     social_links: Vec<SocialLink>,
     report_issue_url: Option<String>,
     website_url: String,
@@ -78,6 +83,45 @@ struct AppTemplate<'a> {
     description_html: String,
     changelog_html: String,
     changelog_excerpt_html: Option<String>,
+}
+
+struct AuthorProfile {
+    name: String,
+    picture_url: String,
+    links: Vec<AuthorLink>,
+}
+
+struct AuthorLink {
+    service: String,
+    handle: String,
+    href: String,
+}
+
+fn keybase_author_profile(app: &AppSummary) -> Option<AuthorProfile> {
+    let author = app.author.as_ref()?;
+    let username = author.keybase_username.trim().to_ascii_lowercase();
+    let mut links = Vec::new();
+    for (label, handle, base) in [
+        ("Keybase", username.as_str(), "https://keybase.io/"),
+        ("GitHub", author.github_username.as_str(), "https://github.com/"),
+        ("Twitter", author.twitter_username.as_str(), "https://twitter.com/"),
+        ("Hacker News", author.hackernews_username.as_str(), "https://news.ycombinator.com/user?id="),
+        ("Reddit", author.reddit_username.as_str(), "https://www.reddit.com/user/"),
+    ] {
+        let handle = handle.trim();
+        if !handle.is_empty() {
+            links.push(AuthorLink {
+                service: label.to_string(),
+                handle: handle.to_string(),
+                href: format!("{base}{}", encode_query_value(handle).replace('+', "%20")),
+            });
+        }
+    }
+    Some(AuthorProfile {
+        name: if author.name.trim().is_empty() { username.clone() } else { author.name.trim().to_string() },
+        picture_url: safe_web_url(&author.picture),
+        links,
+    })
 }
 
 struct ListingScreenshot {
@@ -158,6 +202,7 @@ pub fn render_preview(
 ) -> Result<String> {
     let mut template = app_template(app, details);
     template.preview = true;
+    template.author_href = None;
     template.public_download = public_download;
     template.root = "../";
     template.home_href = format!("../{}/", app.app_id);
@@ -211,6 +256,10 @@ fn app_template<'a>(app: &'a AppSummary, details: &'a AppDetailsForMarket) -> Ap
             })
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| "Unknown".to_string()),
+        author_href: author_href(app),
+        author_unverified: app.author.as_ref().is_some_and(|author| {
+            !author.name.trim().is_empty() && author.keybase_username.trim().is_empty()
+        }),
         social_links: build_social_links(app),
         report_issue_url: report_issue_url(app),
         website_url: safe_web_url(&app.web_link),
@@ -219,6 +268,19 @@ fn app_template<'a>(app: &'a AppSummary, details: &'a AppDetailsForMarket) -> Ap
         changelog_html: render_markdown(&details.change_log),
         changelog_excerpt_html: changelog_excerpt(&details.change_log).map(render_markdown),
     }
+}
+
+// Use only URL-safe identity components, also safe as static directory names.
+fn author_href(app: &AppSummary) -> Option<String> {
+    if let Some(username) = app.author.as_ref().map(|a| a.keybase_username.trim())
+        .filter(|name| !name.is_empty())
+    {
+        return username.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+            .then(|| format!("/author/keybase/{}", username.to_ascii_lowercase()));
+    }
+    let fingerprint = app.author_pgp_key_fingerprint.trim();
+    (!fingerprint.is_empty() && fingerprint.bytes().all(|c| c.is_ascii_hexdigit()))
+        .then(|| format!("/author/sig/{}", fingerprint.to_ascii_uppercase()))
 }
 
 fn listing<'a>(app: &'a AppSummary, package_base_url: &str) -> ListingApp<'a> {
@@ -512,6 +574,43 @@ fn init_tracing() {
 #[cfg(test)]
 mod route_tests {
     use super::*;
+
+    #[test]
+    fn pgp_author_names_are_labeled_unverified() {
+        let mut app: AppSummary = serde_json::from_value(serde_json::json!({
+            "appId": "test", "name": "Test", "version": "1", "versionNumber": 1,
+            "packageId": "test", "isOpenSource": true,
+            "author": {"name": "Alice <Example>"}, "authorPgpKeyFingerprint": "ABCDEF"
+        })).unwrap();
+        let details = serde_json::from_value(serde_json::json!({})).unwrap();
+        let html = app_template(&app, &details).render().unwrap();
+        assert!(html.contains("href=\"/author/sig/ABCDEF\">Alice &#60;Example&#62;</a> <span class=\"author-verification\">(unverified)</span>"));
+        app.author.as_mut().unwrap().keybase_username = "alice".into();
+        let html = app_template(&app, &details).render().unwrap();
+        assert!(!html.contains("(unverified)"));
+        app.author = None;
+        let html = app_template(&app, &details).render().unwrap();
+        assert!(html.contains(">Unknown</a>"));
+        assert!(!html.contains("(unverified)"));
+    }
+
+    #[test]
+    fn author_links_require_safe_identity_and_prefer_keybase() {
+        let mut app: AppSummary = serde_json::from_value(serde_json::json!({
+            "appId": "test", "name": "Test", "version": "1", "versionNumber": 1,
+            "packageId": "test", "isOpenSource": true, "author": {"name": "Someone"}
+        })).unwrap();
+        assert_eq!(author_href(&app), None);
+        app.author_pgp_key_fingerprint = "abcdef".into();
+        assert_eq!(author_href(&app).as_deref(), Some("/author/sig/ABCDEF"));
+        app.author.as_mut().unwrap().keybase_username = "Alice".into();
+        assert_eq!(author_href(&app).as_deref(), Some("/author/keybase/alice"));
+        app.author.as_mut().unwrap().keybase_username = "../outside".into();
+        assert_eq!(author_href(&app), None);
+        app.author = None;
+        app.author_pgp_key_fingerprint = "../outside".into();
+        assert_eq!(author_href(&app), None);
+    }
 
     #[test]
     fn changelog_excerpts_are_bounded_and_unicode_safe() {

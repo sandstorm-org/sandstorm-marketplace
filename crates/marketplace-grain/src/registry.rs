@@ -803,6 +803,7 @@ impl Registry {
                         is_open_source: false,
                         categories: Vec::new(),
                         author: None,
+                        author_pgp_key_fingerprint: String::new(),
                         upstream_author: String::new(),
                         short_description: "Invalid metadata".into(),
                         created_at: String::new(),
@@ -887,6 +888,21 @@ impl Registry {
             // identity. Keep them separate so a live lookup always takes precedence.
             if let Some(profile) = self.database.imported_author(&entry.app.package_id)? {
                 entry.app.author = Some(serde_json::from_str(&profile)?);
+            }
+        }
+        if entry.app.author.is_none() {
+            if let Some(name) = crate::spk::pgp_author_name(
+                info.get_metadata()?.get_pgp_keyring()?, entry.fingerprint,
+            ) {
+                entry.app.author = Some(AuthorIdentity {
+                    name,
+                    keybase_username: String::new(),
+                    picture: String::new(),
+                    github_username: String::new(),
+                    twitter_username: String::new(),
+                    hackernews_username: String::new(),
+                    reddit_username: String::new(),
+                });
             }
         }
         Ok(entry)

@@ -239,6 +239,30 @@ fn verify_pgp_bindings(key: &mut pgp::composed::SignedPublicKey) -> Result<()> {
         .context("verifying OpenPGP self-certifications and key bindings")
 }
 
+/// A key's self-declared name is useful for display, but is not a verified identity.
+pub(crate) fn pgp_author_name(keyring: &[u8], fingerprint: &str) -> Option<String> {
+    use pgp::{composed::{Deserializable, SignedPublicKey}, types::KeyDetails};
+    if fingerprint.is_empty() || keyring.len() > 4 << 20 {
+        return None;
+    }
+    let keys = SignedPublicKey::from_reader_many(keyring).ok()?.0;
+    for key in keys {
+        let Ok(mut key) = key else { continue };
+        if !hex::encode_upper(key.fingerprint().as_bytes()).eq_ignore_ascii_case(fingerprint) {
+            continue;
+        }
+        verify_pgp_bindings(&mut key).ok()?;
+        return key.details.users.iter().find_map(|user| {
+            let id = std::str::from_utf8(user.id.id()).ok()?;
+            // Conventional user IDs are "Name (comment) <email>". Do not
+            // expose the contact address as the author's display name.
+            let name = id.split(['<', '(']).next()?.trim();
+            (!name.is_empty() && !name.contains('@')).then(|| name.to_owned())
+        });
+    }
+    None
+}
+
 fn verify_pgp(app_id: &str, signature: &[u8], keyring: &[u8]) -> Result<String> {
     use pgp::{
         composed::{Deserializable, Message, SignedPublicKey},
@@ -294,6 +318,14 @@ mod tests {
     const MEDIAWIKI_PROOF: &[u8] = include_bytes!("../tests/fixtures/pgp/mediawiki-proof.pgp");
     const MEDIAWIKI_APP: &str = "p04q48xd2kgkystkrda5n77kdns6u569wnactgh904tf7s3vev70";
     const MEDIAWIKI_FINGERPRINT: &str = "C0B2C432638DAEB0D70715C7F654B8C7D4CA3CB8";
+
+    #[test]
+    fn author_name_comes_only_from_the_matching_key() {
+        assert_eq!(pgp_author_name(KEY, FINGERPRINT).as_deref(), Some("keybase.io/ocdtrekkie"));
+        assert_eq!(pgp_author_name(KEY, MEDIAWIKI_FINGERPRINT), None);
+        assert_eq!(pgp_author_name(KEY, ""), None);
+        assert_eq!(pgp_author_name(b"invalid", FINGERPRINT), None);
+    }
 
     #[test]
     fn verifies_bzip2_author_proof() -> Result<()> {

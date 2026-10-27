@@ -30,6 +30,8 @@ pub struct AppSummary {
     #[serde(default)]
     pub categories: Vec<String>,
     pub author: Option<AuthorIdentity>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub author_pgp_key_fingerprint: String,
     #[serde(default)]
     pub upstream_author: String,
     #[serde(default)]

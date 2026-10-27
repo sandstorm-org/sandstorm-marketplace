@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sandstorm Marketplace</title>
+    <title>{% if let Some(title) = author_title %}{{ title }} · {% endif %}Sandstorm Marketplace</title>
     <link rel="stylesheet" href="/assets/marketplace.css">
     <link rel="icon" href="/assets/favicon.png" type="image/png">
   </head>
@@ -27,7 +27,25 @@
     <p class="intro">Install any of the apps below with just one click.</p>
     <main>
       {% if experimental %}<p class="preview-notice" role="status">Experimental mode · Pending updates to previously approved apps only.</p>{% endif %}
-      <h1 class="catalog-title" id="catalog-title">{% for tag in tags %}{% if tag.selected %}{% if tag.name == "All" %}All Apps{% else %}{{ tag.name }}{% endif %}{% endif %}{% endfor %}</h1>
+      <h1 class="catalog-title" id="catalog-title"{% if author_title.is_some() %} data-author-title{% endif %}>{% if let Some(title) = author_title %}{{ title }}{% else %}{% for tag in tags %}{% if tag.selected %}{% if tag.name == "All" %}All Apps{% else %}{{ tag.name }}{% endif %}{% endif %}{% endfor %}{% endif %}</h1>
+      {% if let Some(profile) = author_profile %}
+      <section class="author-profile" aria-label="Publisher profile">
+        {% if !profile.picture_url.is_empty() %}<img class="author-avatar" src="{{ profile.picture_url }}" alt="" width="80" height="80" referrerpolicy="no-referrer">{% endif %}
+        <div>
+          <div class="socials profile-socials">
+            {% for link in profile.links %}
+            <a href="{{ link.href }}" aria-label="{{ link.handle }} on {{ link.service }}" title="{{ link.service }}" rel="noreferrer noopener">
+              {% let service = link.service.as_str() %}{% include "social-icon.html" %}
+              <span>{{ link.handle }}</span>
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+      {% endif %}
+      {% if let Some(fingerprint) = unverified_fingerprint %}
+      <p class="preview-notice">This author is not verified on Keybase. If this is you, please create an account on <a href="https://keybase.io/" rel="noreferrer noopener">Keybase.io</a> and connect the PGP key used to sign this app. Fingerprint: <code style="overflow-wrap: anywhere">{{ fingerprint }}</code></p>
+      {% endif %}
       <section class="grid" aria-labelledby="catalog-title">
         {% for listing in apps %}
         <article data-categories="{{ listing.categories_json }}" data-search="{{ listing.search_text }}">

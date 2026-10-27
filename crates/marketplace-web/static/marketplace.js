@@ -51,13 +51,16 @@ if (typeof document !== "undefined")
     let host = serverOrigin(params.get("host"));
     const query = params.get("q") || "";
     const tag = categoryFromPath(location.pathname);
+    const authorPage = location.pathname.startsWith("/author/");
     const welcome = document.getElementById("welcome");
-    if (welcome) welcome.hidden = Boolean(tag || query);
+    if (welcome) welcome.hidden = Boolean(authorPage || tag || query);
     const title = document.getElementById("catalog-title");
     if (title)
       title.textContent = query
         ? `Search results for “${query}”`
-        : tag || "All Apps";
+        : title.hasAttribute("data-author-title")
+          ? title.textContent
+          : tag || "All Apps";
     const cards = document.querySelectorAll("article[data-search]");
     let visible = 0;
     cards.forEach((card) => {
@@ -100,7 +103,8 @@ if (typeof document !== "undefined")
         url.origin === location.origin &&
         (url.pathname === "/" ||
           url.pathname.startsWith("/app/") ||
-          url.pathname.startsWith("/genre/"))
+          url.pathname.startsWith("/genre/") ||
+          url.pathname.startsWith("/author/"))
       ) {
         if (host) url.searchParams.set("host", host);
         if (experimental) url.searchParams.set("experimental", "true");

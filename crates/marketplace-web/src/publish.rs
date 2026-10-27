@@ -188,6 +188,12 @@ fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> 
             fs::remove_file(path)?;
         }
     }
+    // Keep author destinations for every direct app page, including deprecated releases.
+    let authors: std::collections::BTreeSet<_> = merged
+        .values()
+        .chain(index.index.apps.iter())
+        .filter_map(crate::author_href)
+        .collect();
     // Render direct pages first, then remove deprecated apps from discovery.
     let mut index = index;
     index.index.apps.retain(|app| app.deprecation.is_none());
@@ -234,6 +240,17 @@ fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> 
             )?,
         )?;
     }
+    for href in authors {
+        let directory = stage.join(href.trim_start_matches('/'));
+        fs::create_dir_all(&directory)?;
+        fs::write(
+            directory.join("index.html"),
+            with_experimental(
+                author_page(&index, &href, base, false)?,
+                author_page(&updates, &href, base, true)?,
+            )?,
+        )?;
+    }
     fs::create_dir(stage.join("assets"))?;
     for asset in crate::assets::ASSETS {
         fs::write(&stage.join("assets").join(asset.name), asset.bytes)?;
@@ -247,6 +264,50 @@ fn unavailable_page(message: &str) -> String {
     )
 }
 
+fn author_page(index: &LoadedAppIndex, href: &str, base: &str, experimental: bool) -> Result<String> {
+    let identity = href.rsplit('/').next().unwrap_or_default();
+    // Profiles can change between releases. Prefer the most recently published
+    // matching app, while grouping remains strictly based on the Keybase username.
+    let author_profile = if href.starts_with("/author/keybase/") {
+        index.index.apps.iter()
+            .filter(|app| crate::author_href(app).as_deref() == Some(href))
+            .max_by(|a, b| a.created_at.cmp(&b.created_at))
+            .and_then(crate::keybase_author_profile)
+    } else {
+        None
+    };
+    let unverified_fingerprint = href.starts_with("/author/sig/").then(|| identity.to_string());
+    let name = author_profile.as_ref().map(|profile| profile.name.as_str())
+        .or_else(|| {
+            index.index.apps.iter()
+                .filter(|app| crate::author_href(app).as_deref() == Some(href))
+                .filter_map(|app| app.author.as_ref()
+                    .map(|author| (app.created_at.as_str(), author.name.trim())))
+                .filter(|(_, name)| !name.is_empty())
+                .max_by_key(|(created_at, _)| *created_at)
+                .map(|(_, name)| name)
+        })
+        .unwrap_or(identity);
+    Ok(HomeTemplate {
+        show_welcome: false,
+        author_title: Some(format!("Apps by Author — {name}")),
+        author_profile,
+        unverified_fingerprint,
+        search_action: href.to_string(),
+        tags: build_tag_chips(index, None, ""),
+        apps: index
+            .index
+            .apps
+            .iter()
+            .filter(|app| crate::author_href(app).as_deref() == Some(href))
+            .map(|app| listing(app, base))
+            .collect(),
+        search: String::new(),
+        experimental,
+    }
+    .render()?)
+}
+
 fn home(
     index: &LoadedAppIndex,
     tag: Option<&str>,
@@ -254,6 +315,9 @@ fn home(
     experimental: bool,
 ) -> Result<String> {
     Ok(HomeTemplate {
+        author_title: None,
+        author_profile: None,
+        unverified_fingerprint: None,
         show_welcome: tag.is_none(),
         search_action: crate::home_href(tag, ""),
         tags: build_tag_chips(index, tag, ""),
@@ -451,6 +515,54 @@ fn commit(stage: &Path, output: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn author_pages_group_by_identity_not_display_name() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let source = temp.path().join("source");
+        fs::create_dir(&source)?;
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/app-index");
+        for dir in ["apps", "images", "packages"] {
+            copy_flat_directory(&fixtures.join(dir), &source.join(dir))?;
+        }
+        let mut index = LoadedAppIndex::load(&source)?.index;
+        let fingerprint = "AABBCCDD".repeat(5);
+        for app in &mut index.apps {
+            app.author.as_mut().unwrap().name = "Same Name".into();
+            app.author_pgp_key_fingerprint = fingerprint.clone();
+        }
+        index.apps[0].author.as_mut().unwrap().keybase_username = "Alice".into();
+        let output = temp.path().join("www");
+        fs::write(source.join("apps/index.json"), serde_json::to_vec(&index)?)?;
+        publish(&source, &output)?;
+        let alice = fs::read_to_string(output.join("author/keybase/alice/index.html"))?;
+        assert!(alice.contains("<h2 title=\"Etherpad\">"));
+        assert!(!alice.contains("<h2 title=\"Wekan\">"));
+        assert!(alice.contains("action=\"/author/keybase/alice\""));
+        assert!(alice.contains("Apps by Author — Same Name"));
+        assert!(alice.contains("aria-label=\"alice on Keybase\""));
+        assert!(alice.contains("href=\"https://keybase.io/alice\""));
+        assert!(alice.contains("href=\"https://github.com/ether\""));
+        let sig = fs::read_to_string(output.join(format!("author/sig/{fingerprint}/index.html")))?;
+        assert!(sig.contains("<h2 title=\"Wekan\">"));
+        assert!(!sig.contains("<h2 title=\"Etherpad\">"));
+        assert!(!sig.contains("Publisher profile"));
+        assert!(sig.contains("Apps by Author — Same Name"));
+        assert!(sig.contains("This author is not verified on Keybase."));
+        assert!(sig.contains("href=\"https://keybase.io/\""));
+        assert!(sig.contains(&format!("{fingerprint}</code>")));
+        assert!(!alice.contains("This author is not verified on Keybase."));
+        let app = fs::read_to_string(output.join(format!("app/{}/index.html", index.apps[0].app_id)))?;
+        assert!(app.contains("href=\"/author/keybase/alice\""));
+        index.apps[1].author.as_mut().unwrap().keybase_username = "alice".into();
+        fs::write(source.join("apps/index.json"), serde_json::to_vec(&index)?)?;
+        publish(&source, &output)?;
+        let alice = fs::read_to_string(output.join("author/keybase/alice/index.html"))?;
+        assert!(alice.contains("<h2 title=\"Etherpad\">"));
+        assert!(alice.contains("<h2 title=\"Wekan\">"));
+        assert!(!output.join("author/sig").exists());
+        Ok(())
+    }
+
     #[test]
     fn publication_is_complete_and_failure_preserves_previous_generation() -> Result<()> {
         let temp = tempfile::tempdir()?;

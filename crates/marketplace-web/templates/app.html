@@ -73,11 +73,13 @@
                 </div>
               </div>
               <div class="author-row">
-                <div>Packaged by: <span class="author-name">{{ author_name }}</span></div>
+                <div class="author-credit">{% if let Some(href) = author_href %}<a class="author-name" href="{{ href }}">{{ author_name }}</a>{% else %}<span class="author-name">{{ author_name }}</span>{% endif %}{% if author_unverified %} <span class="author-verification">(unverified)</span>{% endif %}</div>
                 {% if !social_links.is_empty() %}
-                <div class="socials">
+                <div class="socials author-socials">
                   {% for social in social_links %}
-                  <a href="{{ social.href }}">{{ social.label }}</a>
+                  <a href="{{ social.href }}" aria-label="{{ author_name }} on {{ social.label }}" title="{{ social.label }}" rel="noreferrer noopener">
+                    {% let service = social.label.as_str() %}{% include "social-icon.html" %}
+                  </a>
                   {% endfor %}
                 </div>
                 {% endif %}
