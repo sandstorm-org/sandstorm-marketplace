@@ -241,7 +241,10 @@ fn verify_pgp_bindings(key: &mut pgp::composed::SignedPublicKey) -> Result<()> {
 
 /// A key's self-declared name is useful for display, but is not a verified identity.
 pub(crate) fn pgp_author_name(keyring: &[u8], fingerprint: &str) -> Option<String> {
-    use pgp::{composed::{Deserializable, SignedPublicKey}, types::KeyDetails};
+    use pgp::{
+        composed::{Deserializable, SignedPublicKey},
+        types::KeyDetails,
+    };
     if fingerprint.is_empty() || keyring.len() > 4 << 20 {
         return None;
     }
@@ -321,7 +324,10 @@ mod tests {
 
     #[test]
     fn author_name_comes_only_from_the_matching_key() {
-        assert_eq!(pgp_author_name(KEY, FINGERPRINT).as_deref(), Some("keybase.io/ocdtrekkie"));
+        assert_eq!(
+            pgp_author_name(KEY, FINGERPRINT).as_deref(),
+            Some("keybase.io/ocdtrekkie")
+        );
         assert_eq!(pgp_author_name(KEY, MEDIAWIKI_FINGERPRINT), None);
         assert_eq!(pgp_author_name(KEY, ""), None);
         assert_eq!(pgp_author_name(b"invalid", FINGERPRINT), None);

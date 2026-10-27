@@ -460,7 +460,11 @@ fn catalog_import_is_atomic_and_empty_only() -> anyhow::Result<()> {
     assert_eq!(reopened.package_ids()?.len(), 2);
     let app = main["apps"][0]["appId"].as_str().unwrap();
     let html = std::fs::read_to_string(dir.path().join("www/app").join(app).join("index.html"))?;
-    assert!(html.contains("class=\"author-name\" href=\"/author/keybase/packager\">Imported Packager</a>"));
+    assert!(
+        html.contains(
+            "class=\"author-name\" href=\"/author/keybase/packager\">Imported Packager</a>"
+        )
+    );
     assert!(html.contains("class=\"author-name\" href=\"/author/keybase/packager\">packager</a>"));
     let pending = experimental["apps"][0]["packageId"].as_str().unwrap();
     assert!(

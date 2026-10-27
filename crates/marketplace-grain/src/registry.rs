@@ -892,7 +892,8 @@ impl Registry {
         }
         if entry.app.author.is_none() {
             if let Some(name) = crate::spk::pgp_author_name(
-                info.get_metadata()?.get_pgp_keyring()?, entry.fingerprint,
+                info.get_metadata()?.get_pgp_keyring()?,
+                entry.fingerprint,
             ) {
                 entry.app.author = Some(AuthorIdentity {
                     name,

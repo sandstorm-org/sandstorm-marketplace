@@ -65,7 +65,12 @@ async fn saved_keybase_connection_is_reported_only_to_approvers() -> Result<()> 
             let response = post(&approver, "keybase-refresh-all", b"").await?;
             match response.get()?.which()? {
                 web::response::ClientError(error) => {
-                    assert!(error.get_description_html()?.to_str()?.contains("Connect Keybase"));
+                    assert!(
+                        error
+                            .get_description_html()?
+                            .to_str()?
+                            .contains("Connect Keybase")
+                    );
                 }
                 _ => anyhow::bail!("refresh without Keybase connection was allowed"),
             }

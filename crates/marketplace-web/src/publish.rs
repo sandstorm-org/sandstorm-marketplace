@@ -264,25 +264,43 @@ fn unavailable_page(message: &str) -> String {
     )
 }
 
-fn author_page(index: &LoadedAppIndex, href: &str, base: &str, experimental: bool) -> Result<String> {
+fn author_page(
+    index: &LoadedAppIndex,
+    href: &str,
+    base: &str,
+    experimental: bool,
+) -> Result<String> {
     let identity = href.rsplit('/').next().unwrap_or_default();
     // Profiles can change between releases. Prefer the most recently published
     // matching app, while grouping remains strictly based on the Keybase username.
     let author_profile = if href.starts_with("/author/keybase/") {
-        index.index.apps.iter()
+        index
+            .index
+            .apps
+            .iter()
             .filter(|app| crate::author_href(app).as_deref() == Some(href))
             .max_by(|a, b| a.created_at.cmp(&b.created_at))
             .and_then(crate::keybase_author_profile)
     } else {
         None
     };
-    let unverified_fingerprint = href.starts_with("/author/sig/").then(|| identity.to_string());
-    let name = author_profile.as_ref().map(|profile| profile.name.as_str())
+    let unverified_fingerprint = href
+        .starts_with("/author/sig/")
+        .then(|| identity.to_string());
+    let name = author_profile
+        .as_ref()
+        .map(|profile| profile.name.as_str())
         .or_else(|| {
-            index.index.apps.iter()
+            index
+                .index
+                .apps
+                .iter()
                 .filter(|app| crate::author_href(app).as_deref() == Some(href))
-                .filter_map(|app| app.author.as_ref()
-                    .map(|author| (app.created_at.as_str(), author.name.trim())))
+                .filter_map(|app| {
+                    app.author
+                        .as_ref()
+                        .map(|author| (app.created_at.as_str(), author.name.trim()))
+                })
                 .filter(|(_, name)| !name.is_empty())
                 .max_by_key(|(created_at, _)| *created_at)
                 .map(|(_, name)| name)
@@ -551,7 +569,8 @@ mod tests {
         assert!(sig.contains("href=\"https://keybase.io/\""));
         assert!(sig.contains(&format!("{fingerprint}</code>")));
         assert!(!alice.contains("This author is not verified on Keybase."));
-        let app = fs::read_to_string(output.join(format!("app/{}/index.html", index.apps[0].app_id)))?;
+        let app =
+            fs::read_to_string(output.join(format!("app/{}/index.html", index.apps[0].app_id)))?;
         assert!(app.contains("href=\"/author/keybase/alice\""));
         index.apps[1].author.as_mut().unwrap().keybase_username = "alice".into();
         fs::write(source.join("apps/index.json"), serde_json::to_vec(&index)?)?;

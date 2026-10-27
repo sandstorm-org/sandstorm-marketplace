@@ -103,10 +103,26 @@ fn keybase_author_profile(app: &AppSummary) -> Option<AuthorProfile> {
     let mut links = Vec::new();
     for (label, handle, base) in [
         ("Keybase", username.as_str(), "https://keybase.io/"),
-        ("GitHub", author.github_username.as_str(), "https://github.com/"),
-        ("Twitter", author.twitter_username.as_str(), "https://twitter.com/"),
-        ("Hacker News", author.hackernews_username.as_str(), "https://news.ycombinator.com/user?id="),
-        ("Reddit", author.reddit_username.as_str(), "https://www.reddit.com/user/"),
+        (
+            "GitHub",
+            author.github_username.as_str(),
+            "https://github.com/",
+        ),
+        (
+            "Twitter",
+            author.twitter_username.as_str(),
+            "https://twitter.com/",
+        ),
+        (
+            "Hacker News",
+            author.hackernews_username.as_str(),
+            "https://news.ycombinator.com/user?id=",
+        ),
+        (
+            "Reddit",
+            author.reddit_username.as_str(),
+            "https://www.reddit.com/user/",
+        ),
     ] {
         let handle = handle.trim();
         if !handle.is_empty() {
@@ -118,7 +134,11 @@ fn keybase_author_profile(app: &AppSummary) -> Option<AuthorProfile> {
         }
     }
     Some(AuthorProfile {
-        name: if author.name.trim().is_empty() { username.clone() } else { author.name.trim().to_string() },
+        name: if author.name.trim().is_empty() {
+            username.clone()
+        } else {
+            author.name.trim().to_string()
+        },
         picture_url: safe_web_url(&author.picture),
         links,
     })
@@ -272,10 +292,15 @@ fn app_template<'a>(app: &'a AppSummary, details: &'a AppDetailsForMarket) -> Ap
 
 // Use only URL-safe identity components, also safe as static directory names.
 fn author_href(app: &AppSummary) -> Option<String> {
-    if let Some(username) = app.author.as_ref().map(|a| a.keybase_username.trim())
+    if let Some(username) = app
+        .author
+        .as_ref()
+        .map(|a| a.keybase_username.trim())
         .filter(|name| !name.is_empty())
     {
-        return username.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+        return username
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'_')
             .then(|| format!("/author/keybase/{}", username.to_ascii_lowercase()));
     }
     let fingerprint = app.author_pgp_key_fingerprint.trim();
@@ -581,7 +606,8 @@ mod route_tests {
             "appId": "test", "name": "Test", "version": "1", "versionNumber": 1,
             "packageId": "test", "isOpenSource": true,
             "author": {"name": "Alice <Example>"}, "authorPgpKeyFingerprint": "ABCDEF"
-        })).unwrap();
+        }))
+        .unwrap();
         let details = serde_json::from_value(serde_json::json!({})).unwrap();
         let html = app_template(&app, &details).render().unwrap();
         assert!(html.contains("href=\"/author/sig/ABCDEF\">Alice &#60;Example&#62;</a> <span class=\"author-verification\">(unverified)</span>"));
@@ -599,7 +625,8 @@ mod route_tests {
         let mut app: AppSummary = serde_json::from_value(serde_json::json!({
             "appId": "test", "name": "Test", "version": "1", "versionNumber": 1,
             "packageId": "test", "isOpenSource": true, "author": {"name": "Someone"}
-        })).unwrap();
+        }))
+        .unwrap();
         assert_eq!(author_href(&app), None);
         app.author_pgp_key_fingerprint = "abcdef".into();
         assert_eq!(author_href(&app).as_deref(), Some("/author/sig/ABCDEF"));

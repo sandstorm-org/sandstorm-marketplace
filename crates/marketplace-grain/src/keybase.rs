@@ -80,8 +80,13 @@ pub async fn lookup(
 }
 
 pub async fn refresh_all(registry: &Registry, platform: &PlatformSlot) -> Result<Value> {
-    ensure!(connected(registry)?, "Connect Keybase before refreshing author profiles");
-    let fingerprints: std::collections::BTreeSet<_> = registry.queue()?.into_iter()
+    ensure!(
+        connected(registry)?,
+        "Connect Keybase before refreshing author profiles"
+    );
+    let fingerprints: std::collections::BTreeSet<_> = registry
+        .queue()?
+        .into_iter()
         .map(|release| release.fingerprint.to_ascii_uppercase())
         .filter(|fingerprint| !fingerprint.is_empty())
         .collect();
@@ -91,7 +96,8 @@ pub async fn refresh_all(registry: &Registry, platform: &PlatformSlot) -> Result
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(30),
             lookup_profile(registry, platform, fingerprint),
-        ).await;
+        )
+        .await;
         match result {
             Ok(Ok(_)) => refreshed += 1,
             error => failed.push(json!({

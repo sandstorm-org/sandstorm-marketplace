@@ -312,7 +312,11 @@ impl web::Server for Session {
                         results.get().init_no_content();
                     } else if path == "keybase-refresh-all" {
                         let summary = crate::keybase::refresh_all(&registry, &platform).await?;
-                        content(results.get(), "application/json", &serde_json::to_vec(&summary)?);
+                        content(
+                            results.get(),
+                            "application/json",
+                            &serde_json::to_vec(&summary)?,
+                        );
                     } else if let Some(fingerprint) = path.strip_prefix("keybase/") {
                         let profile =
                             crate::keybase::lookup(&registry, &platform, fingerprint).await?;

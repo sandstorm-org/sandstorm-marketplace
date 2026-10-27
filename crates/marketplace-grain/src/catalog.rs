@@ -144,7 +144,10 @@ pub(crate) fn parse<'a>(info: p::verified_info::Reader<'a>, published: i64) -> R
                 .map(|c| c.map(|v| CATEGORIES[v as usize].to_string()))
                 .collect::<std::result::Result<_, _>>()?,
             author: None,
-            author_pgp_key_fingerprint: info.get_author_pgp_key_fingerprint()?.to_str()?.to_string(),
+            author_pgp_key_fingerprint: info
+                .get_author_pgp_key_fingerprint()?
+                .to_str()?
+                .to_string(),
             upstream_author: meta
                 .get_author()
                 .get_upstream_author()?
