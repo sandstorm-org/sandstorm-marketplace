@@ -86,6 +86,30 @@ impl Entry<'_> {
         Ok(())
     }
 }
+/// Read only the icon, without hashing screenshots or parsing the rest of the listing.
+pub(crate) fn icon(info: p::verified_info::Reader<'_>) -> Result<Option<(&str, &[u8])>> {
+    let icons = info.get_metadata()?.get_icons();
+    let icon = if icons.has_market() {
+        icons.get_market()?
+    } else if icons.has_app_grid() {
+        icons.get_app_grid()?
+    } else {
+        return Ok(None);
+    };
+    Ok(match icon.which()? {
+        p::metadata::icon::Svg(svg) => Some(("image/svg+xml", svg?.to_str()?.as_bytes())),
+        p::metadata::icon::Png(png) => Some((
+            "image/png",
+            if png.has_dpi1x() {
+                png.get_dpi1x()?
+            } else {
+                png.get_dpi2x()?
+            },
+        )),
+        _ => None,
+    })
+}
+
 pub(crate) fn parse<'a>(info: p::verified_info::Reader<'a>, published: i64) -> Result<Entry<'a>> {
     parse_listing(info, published, true)
 }

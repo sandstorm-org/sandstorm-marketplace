@@ -792,6 +792,7 @@ test('Homepage pins, arrows, hides, discards, persists, and keeps hidden apps se
   await page.reload();
   await expect(page.locator('#homepage-order > li')).toHaveCount(2);
   await expect(page.getByRole('button', {name: /^Unpin:/})).toHaveCount(0);
+  await expect.poll(() => page.locator('.homepage-icon').evaluateAll(images => images.every(img => img.complete && img.naturalWidth > 0))).toBe(true);
   await expect(page.getByRole('button', {name: 'Restore default order'})).toHaveCount(0);
   await page.getByRole('button', {name: 'Pin: Rust test app', exact: true}).click();
   await page.getByRole('button', {name: 'Pin: Unreviewed app', exact: true}).click();
@@ -848,6 +849,29 @@ test('Homepage pins, arrows, hides, discards, persists, and keeps hidden apps se
   await expect(page.locator('#homepage-save')).toHaveCSS('cursor', 'default');
   await page.goto('/public/');
   await expect(page.locator('.grid article[data-app-id="' + newApp + '"]')).toBeVisible();
+});
+
+test('Homepage icons use native lazy loading and deferred image requests', async ({ page, request }) => {
+  const newPackage = await (await request.post('/__test/new-app')).text();
+  await request.post('/admin/approve/' + newPackage, {data: ''});
+  const icons = [];
+  page.on('request', request => { if (request.url().includes('/icon-image/')) icons.push(request.url()); });
+  await page.goto('/admin/');
+  await page.addStyleTag({content: '#homepage-order > li { min-height: 5000px; }'});
+  await page.locator('[data-tab="homepage"]').click();
+  const images = page.locator('.homepage-icon');
+  await expect(images).toHaveCount(2);
+  await expect(images.first()).toHaveAttribute('loading', 'lazy');
+  await expect.poll(() => images.first().evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+  expect(icons).toHaveLength(1);
+  await images.last().scrollIntoViewIfNeeded();
+  await expect.poll(() => images.last().evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+  expect(icons).toHaveLength(2);
+  const url = await images.first().getAttribute('src');
+  const response = await request.get(url);
+  expect(response.headers()['content-type']).toContain('image/');
+  expect(response.headers()['content-disposition']).toContain('attachment');
+  expect((await request.get(url.replace('/admin/', '/submitter/'))).ok()).toBeFalsy();
 });
 
 test('Homepage save survives a failed refresh and keeps the next edit usable', async ({ page, request }) => {

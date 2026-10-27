@@ -146,6 +146,17 @@ impl web::Server for Session {
                     "marketplace.js" => content(results.get(), "text/javascript; charset=utf-8", marketplace_web::marketplace_script()),
                     "preview.js" => content(results.get(), "text/javascript; charset=utf-8", include_bytes!("preview.js")),
                     path if path.starts_with("preview/") => content(results.get(), "text/html; charset=utf-8", registry.preview(&path[8..])?.as_bytes()),
+                    path if path.starts_with("icon-image/") => {
+                        let metadata = registry.metadata(&path[11..])?;
+                        if let Some((mime, bytes)) = crate::catalog::icon(metadata.get_root()?)? {
+                            let mut output = results.get().init_content();
+                            output.set_mime_type(mime);
+                            output.reborrow().init_body().set_bytes(bytes);
+                            // SVGs are untrusted app assets. Direct navigation must download
+                            // them rather than execute an SVG document on the admin origin.
+                            output.get_disposition().set_download("app-icon");
+                        } else { not_found(results.get()); }
+                    }
                     path if path.starts_with("icon/") => {
                         let metadata = registry.metadata(&path[5..])?;
                         let entry = crate::catalog::parse(metadata.get_root()?, 0)?;

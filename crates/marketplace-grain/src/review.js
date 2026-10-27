@@ -1038,7 +1038,18 @@ if (typeof document !== "undefined") {
           homepageHidden.push(id);
         });
       }
-      row.append(label, controls);
+      const icon = element("img", undefined, "homepage-icon");
+      icon.alt = "";
+      icon.width = 40;
+      icon.height = 40;
+      icon.loading = "lazy";
+      icon.decoding = "async";
+      if (release?.app.imageId && !release.validationError) {
+        icon.src = new URL("icon-image/" + encodeURIComponent(release.app.packageId), appBase).href;
+      } else {
+        icon.style.visibility = "hidden";
+      }
+      row.append(icon, label, controls);
       return row;
     }));
     if (!ids.length) $("homepage-order").append(element("li", "No published apps yet."));

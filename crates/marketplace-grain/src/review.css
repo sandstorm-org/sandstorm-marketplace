@@ -162,3 +162,5 @@ dialog .actions { justify-content: flex-end; }
 @media (max-width: 600px) {
   .homepage-order .actions { float: none; margin-top: .5rem; }
 }
+
+.homepage-icon { width: 40px; height: 40px; object-fit: contain; vertical-align: middle; margin-right: .75rem; }
