@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.5 — 2026-10-27
+
+- Added a Homepage tab to pin, reorder, and hide published apps.
+- Restored the public homepage’s legacy ordering and added a larger first-app
+  card with a description excerpt.
+- Sped up administration loads by skipping screenshot processing when reading
+  review data. Optimized PGP verification arithmetic in development builds.
+- Fixed SPK uploads and catalog imports failing on cleartext OpenPGP author
+  proofs, including proofs with trailing armor whitespace. Signature, key
+  binding, and app ownership checks remain enforced.
+- Restored the legacy short-description overrides for Let’s Chat, MediaGoblin,
+  FileDrop, and Paperwork during package validation and listing generation,
+  without changing signed package metadata.
+
 ## 0.4.4 — 2026-10-27
 
 - Added author pages that group apps by Keybase identity or PGP fingerprint, with
