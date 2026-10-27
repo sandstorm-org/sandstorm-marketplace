@@ -107,7 +107,7 @@ impl web::Server for Session {
                 let path = params.get()?.get_path()?.to_str()?;
                 match path {
                     "" => content(results.get(), "text/html; charset=utf-8", include_bytes!("review.html")),
-                    path if matches!(path.strip_suffix('/').unwrap_or(path), "apps" | "setup" | "settings" | "notifications" | "replacements")
+                    path if matches!(path.strip_suffix('/').unwrap_or(path), "apps" | "homepage" | "setup" | "settings" | "notifications" | "replacements")
                         || crate::ids::parse_app_id(path.strip_suffix('/').unwrap_or(path)).is_ok() => {
                         let html = include_str!("review.html");
                         let html = if path.ends_with('/') {
@@ -116,8 +116,10 @@ impl web::Server for Session {
                         content(results.get(), "text/html; charset=utf-8", html.as_bytes());
                     }
                     "admin" => {
+                        let releases = registry.queue()?;
                         let snapshot = AdminSnapshot {
-                            releases: registry.queue()?,
+                            homepage: if can_approve { Some(registry.homepage_settings(&releases)?) } else { None },
+                            releases,
                             can_approve,
                             busy: registry.is_busy(),
                             keybase_connected: can_approve && crate::keybase::connected(&registry)?,
@@ -248,7 +250,11 @@ impl web::Server for Session {
                         _ => not_found(results.get()),
                     }
                 } else {
-                    if path == "signing-keys" {
+                    if path == "homepage" {
+                        ensure!(body.len() <= 1024 * 1024, "homepage settings too large");
+                        registry.update_homepage(serde_json::from_slice(body)?)?;
+                        results.get().init_no_content();
+                    } else if path == "signing-keys" {
                         ensure!(body.len() <= 32 * 1024, "signing-key rule is too large");
                         let update = serde_json::from_slice(body)?;
                         crate::work::update_signing_key(registry.clone(), platform.clone(), update)

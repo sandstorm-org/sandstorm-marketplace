@@ -183,6 +183,17 @@ independently of the table search; on narrow screens it moves below the table.
 Existing packages without receipt timestamps display “Not recorded”. The page
 refreshes automatically every 30 seconds when idle.
 
+The **Homepage** tab lists published apps only, including those hidden from the
+homepage. Owners and approvers can **Pin** apps to the top, arrange
+pinned apps with up/down arrows, and **Unpin** them. **Hide** removes an app only
+from the homepage; search, categories, and direct listings remain available.
+Hidden apps have an **Unhide** button. Hiding a pinned app also unpins it.
+Use **Save order** to publish changes or **Discard changes** to undo the draft.
+Apps start unpinned.
+Unpinned apps follow the original
+gallery’s curated ranking (sandstorm-io/sandstorm-app-market, commit 8c7f355).
+The first visible app gets a larger card on wide screens.
+
 Open **Preview listing** to inspect a release, then **Approve**,
 **Reject / request update**, or **Return to review**. Each action explains its
 publication effect before confirmation. Rejection requires a reason, which the

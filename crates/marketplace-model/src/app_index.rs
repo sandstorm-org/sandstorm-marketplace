@@ -102,7 +102,7 @@ impl LoadedAppIndex {
             .with_context(|| format!("failed to read {}", index_path.display()))?;
         let mut index: AppIndexForMarket = serde_json::from_str(&index_text)
             .with_context(|| format!("failed to parse {}", index_path.display()))?;
-        index.apps.sort_by(|a, b| a.name.cmp(&b.name));
+        crate::homepage::HomepageOrder::load(&root)?.sort(&mut index.apps);
         Ok(Self { root, index })
     }
 

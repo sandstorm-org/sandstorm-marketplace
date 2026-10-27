@@ -779,3 +779,143 @@ test('debugging refreshes all Keybase authors and reports partial failures', asy
   await expect(button).toBeEnabled();
   expect(calls).toBe(1);
 });
+
+
+test('Homepage pins, arrows, hides, discards, persists, and keeps hidden apps searchable', async ({ page, request }) => {
+  const newPackage = await (await request.post('/__test/new-app')).text();
+  let snapshot = await (await request.get('/admin/admin')).json();
+  const newApp = snapshot.releases.find(row => row.app.packageId === newPackage).app.appId;
+  await page.goto('/admin/homepage');
+  await expect(page.locator('#homepage-order > li[data-app-id]')).toHaveCount(1);
+  await expect(page.getByRole('button', {name: 'Pin: Unreviewed app', exact: true})).toHaveCount(0);
+  expect((await request.post('/admin/approve/' + newPackage, { data: '' })).ok()).toBeTruthy();
+  await page.reload();
+  await expect(page.locator('#homepage-order > li')).toHaveCount(2);
+  await expect(page.getByRole('button', {name: /^Unpin:/})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Restore default order'})).toHaveCount(0);
+  await page.getByRole('button', {name: 'Pin: Rust test app', exact: true}).click();
+  await page.getByRole('button', {name: 'Pin: Unreviewed app', exact: true}).click();
+  await page.getByRole('button', {name: 'Move up: Unreviewed app', exact: true}).click();
+  await expect(page.locator('#homepage-order > li').first()).toHaveAttribute('data-app-id', newApp);
+  await expect(page.getByRole('button', {name: 'Move up: Unreviewed app', exact: true})).toBeDisabled();
+  await page.locator('#homepage-save').click();
+  await expect(page.locator('#homepage-save')).toBeDisabled();
+  await expect(page.locator('#homepage-save')).toHaveCSS('cursor', 'default');
+  snapshot = await (await request.get('/admin/admin')).json();
+  expect(snapshot.homepage.pinned[0]).toBe(newApp);
+  expect((await (await request.get('/public/homepage.json')).json()).pinned).toContain(newApp);
+  expect((await request.post('/admin/homepage', { data: JSON.stringify({revision: 0, pinned: [], hidden: []}) })).ok()).toBeFalsy();
+  expect((await request.post('/reviewer/homepage', { data: JSON.stringify({revision: 1, pinned: [], hidden: []}) })).ok()).toBeFalsy();
+  for (const body of [
+    {revision: 1, pinned: [newApp, newApp], hidden: []},
+    {revision: 1, pinned: [newApp], hidden: [newApp]},
+    {revision: 1, pinned: [], hidden: [newApp, newApp]},
+  ]) expect((await request.post('/admin/homepage', {data: JSON.stringify(body)})).ok()).toBeFalsy();
+  await page.reload();
+  await expect(page.locator('#homepage-order > li').first()).toHaveAttribute('data-app-id', newApp);
+  await page.getByRole('button', {name: 'Unpin: Unreviewed app', exact: true}).click();
+  await expect(page.getByRole('button', {name: 'Pin: Unreviewed app', exact: true})).toBeVisible();
+  await page.locator('#homepage-discard').click();
+  await expect(page.getByRole('button', {name: 'Unpin: Unreviewed app', exact: true})).toBeVisible();
+  await page.goto('/public/');
+  await expect(page.locator('.grid article').first()).toHaveAttribute('data-app-id', newApp);
+  await expect(page.locator('.grid article.featured')).toHaveCount(1);
+  await expect(page.locator('.featured-description')).toBeVisible();
+  const hero = await page.locator('.featured').boundingBox();
+  const normal = await page.locator('.grid article:not(.featured)').boundingBox();
+  expect(hero.width).toBeGreaterThan(normal.width * 2);
+  await page.goto('/admin/homepage');
+  await page.getByRole('button', {name: 'Hide: Unreviewed app', exact: true}).click();
+  await expect(page.getByRole('button', {name: 'Unhide: Unreviewed app', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Unpin: Unreviewed app', exact: true})).toHaveCount(0);
+  await page.locator('#homepage-save').click();
+  await expect(page.locator('#homepage-save')).toBeDisabled();
+  await expect(page.locator('#homepage-save')).toHaveCSS('cursor', 'default');
+  await page.reload();
+  await expect(page.getByRole('button', {name: 'Unhide: Unreviewed app', exact: true})).toBeVisible();
+  await page.goto('/public/');
+  await expect(page.locator('.grid article[data-app-id="' + newApp + '"]')).toBeHidden();
+  await expect(page.locator('.featured')).toContainText('Rust test app');
+  expect((await request.get('/public/app/' + newApp + '/index.html')).ok()).toBeTruthy();
+  await page.goto('/public/?q=Unreviewed');
+  await expect(page.locator('.grid article[data-app-id="' + newApp + '"]')).toBeVisible();
+  await expect(page.locator('.featured')).toHaveCount(0);
+  await page.goto('/public/genre/DevTools/');
+  await expect(page.locator('.grid article[data-app-id="' + newApp + '"]')).toBeVisible();
+  await page.goto('/admin/homepage');
+  await page.getByRole('button', {name: 'Unhide: Unreviewed app', exact: true}).click();
+  await page.locator('#homepage-save').click();
+  await expect(page.locator('#homepage-save')).toHaveCSS('cursor', 'default');
+  await page.goto('/public/');
+  await expect(page.locator('.grid article[data-app-id="' + newApp + '"]')).toBeVisible();
+});
+
+test('Homepage save survives a failed refresh and keeps the next edit usable', async ({ page, request }) => {
+  await page.goto('/admin/homepage');
+  await page.getByRole('button', {name: 'Pin: Rust test app', exact: true}).click();
+  await request.post('/__test/fail-next-queue');
+  await page.locator('#homepage-save').click();
+  await expect(page.locator('#error')).toContainText('Homepage changes were saved, but the view could not refresh');
+  await expect(page.locator('#homepage-save')).toBeDisabled();
+  await page.getByRole('button', {name: 'Hide: Rust test app', exact: true}).click();
+  await page.locator('#homepage-save').click();
+  await expect(page.locator('#message')).toHaveText('Homepage changes saved.');
+  const settings = (await (await request.get('/admin/admin')).json()).homepage;
+  expect(settings.pinned).toHaveLength(0);
+  expect(settings.hidden).toHaveLength(1);
+});
+
+test('Homepage idle refresh preserves keyboard focus and an unsaved draft', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/admin/homepage');
+  await page.getByRole('button', {name: 'Pin: Rust test app', exact: true}).click();
+  const control = page.getByRole('button', {name: 'Unpin: Rust test app', exact: true});
+  await expect(control).toBeFocused();
+  await page.clock.fastForward(30001);
+  await expect(control).toBeFocused();
+  await expect(page.locator('#homepage-status')).toHaveText('Unsaved changes.');
+  await page.locator('#homepage-discard').click();
+  await expect(page.getByRole('button', {name: 'Pin: Rust test app', exact: true})).toBeVisible();
+});
+
+test('An older in-flight admin response cannot undo a displayed Homepage save', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/admin/homepage');
+  await expect(page.getByRole('button', {name: 'Pin: Rust test app', exact: true})).toBeVisible();
+  let releaseResponse;
+  let responseCaptured;
+  const held = new Promise(resolve => { releaseResponse = resolve; });
+  const captured = new Promise(resolve => { responseCaptured = resolve; });
+  await page.route('**/admin/admin', async route => {
+    const response = await route.fetch();
+    responseCaptured();
+    await held;
+    await route.fulfill({response});
+  });
+  await page.clock.fastForward(30001);
+  await captured;
+  await page.getByRole('button', {name: 'Pin: Rust test app', exact: true}).click();
+  await page.locator('#homepage-save').click();
+  await expect(page.locator('#message')).toHaveText('Homepage changes saved.');
+  const responseFinished = page.waitForResponse('**/admin/admin');
+  releaseResponse();
+  await responseFinished;
+  await expect(page.getByRole('button', {name: 'Unpin: Rust test app', exact: true})).toBeVisible();
+  await expect(page.locator('#homepage-status')).toHaveText('Homepage changes saved.');
+});
+
+test('Homepage excludes unpublished apps even when they have saved placement', async ({ page, request }) => {
+  const packageId = await (await request.post('/__test/new-app')).text();
+  await request.post('/admin/approve/' + packageId, {data: ''});
+  await page.goto('/admin/homepage');
+  await page.getByRole('button', {name: 'Hide: Unreviewed app', exact: true}).click();
+  await page.locator('#homepage-save').click();
+  await expect(page.locator('#homepage-save')).toHaveCSS('cursor', 'default');
+  await request.post('/admin/unapprove/' + packageId, {data: ''});
+  await page.reload();
+  await expect(page.locator('#homepage-order')).not.toContainText('Unreviewed app');
+  await expect(page.locator('#homepage-order > li[data-app-id]')).toHaveCount(1);
+  await request.post('/admin/approve/' + packageId, {data: ''});
+  await page.reload();
+  await expect(page.getByRole('button', {name: 'Unhide: Unreviewed app', exact: true})).toBeVisible();
+});

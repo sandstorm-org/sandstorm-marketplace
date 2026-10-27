@@ -48,16 +48,17 @@
       {% endif %}
       <section class="grid" aria-labelledby="catalog-title">
         {% for listing in apps %}
-        <article data-categories="{{ listing.categories_json }}" data-search="{{ listing.search_text }}">
+        <article{% if listing.homepage_hidden %} hidden data-homepage-hidden{% endif %}{% if listing.featured %} class="featured" data-featured{% endif %} data-app-id="{{ listing.app.app_id }}" data-categories="{{ listing.categories_json }}" data-search="{{ listing.search_text }}">
           <a class="card-link" href="/app/{{ listing.app.app_id }}/">
             {% if !listing.app.image_id.is_empty() %}
             <img class="app-icon" src="/images/{{ listing.app.image_id }}" alt="" loading="lazy">
             {% else %}
             <span class="app-icon icon-placeholder" aria-hidden="true"></span>
             {% endif %}
-            <h2 title="{{ listing.app.name }}">{{ listing.app.name }}</h2>
-            <p class="desc" title="{{ listing.app.short_description }}">{{ listing.app.short_description }}</p>
+            <div class="card-text"><h2 title="{{ listing.app.name }}">{{ listing.app.name }}</h2>
+            <p class="desc" title="{{ listing.app.short_description }}">{{ listing.app.short_description }}</p></div>
           </a>
+          {% if listing.featured %}<div class="featured-description">{{ listing.description_html|safe }}</div>{% endif %}
           <div class="actions">
             <a class="button" data-install data-package-id="{{ listing.app.package_id }}" href="{{ listing.package_url }}">Install</a>
           </div>

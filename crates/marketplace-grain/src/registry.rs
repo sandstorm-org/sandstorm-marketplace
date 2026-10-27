@@ -31,6 +31,8 @@ pub struct AdminSnapshot {
     pub notifications: Option<crate::notifications::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signing_keys: Option<crate::replacements::Settings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<crate::homepage::Settings>,
 }
 
 #[derive(Serialize)]
@@ -721,6 +723,26 @@ impl Registry {
                 &serde_json::to_vec(&AppIndexForMarket { apps })?,
             )?;
         }
+        // Publish only ranks of public apps, never private submission IDs.
+        let (_, mut homepage) = self.homepage_order()?;
+        homepage.pinned.retain(|id| {
+            catalog.join("apps").join(format!("{id}.json")).exists()
+                || catalog
+                    .join("experimental")
+                    .join(format!("{id}.json"))
+                    .exists()
+        });
+        homepage.hidden.retain(|id| {
+            catalog.join("apps").join(format!("{id}.json")).exists()
+                || catalog
+                    .join("experimental")
+                    .join(format!("{id}.json"))
+                    .exists()
+        });
+        fs::write(
+            catalog.join("homepage.json"),
+            serde_json::to_vec(&homepage)?,
+        )?;
         let generation = self.prepare_publication(&catalog)?;
         if let Err(error) = marketplace_web::publish::publish_generation(
             &catalog,

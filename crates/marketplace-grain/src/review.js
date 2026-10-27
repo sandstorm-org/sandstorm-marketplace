@@ -136,7 +136,7 @@ if (typeof document !== "undefined") {
   document.querySelector("base").href = appBase.href;
   const currentPath = () => `/${location.pathname.slice(appBase.pathname.length)}`;
   const currentTab = () => {
-    const tab = /^(setup|settings|notifications|replacements)\/?$/.exec(currentPath().slice(1))?.[1];
+    const tab = /^(homepage|setup|settings|notifications|replacements)\/?$/.exec(currentPath().slice(1))?.[1];
     return tab === "notifications" || tab === "settings" ? "setup" : tab || "apps";
   };
   const currentAppId = () => appIdFromPath(currentPath());
@@ -163,6 +163,11 @@ if (typeof document !== "undefined") {
   let signingKeys = { revision: 0, rules: [] };
   let signingKeyRevision = 0;
   let signingKeyMode = "create";
+  let homepage = { revision: 0, pinned: [], hidden: [], order: [] };
+  let homepageDraft = [];
+  let homepageHidden = [];
+  let homepageRevision = 0;
+  let homepageDirty = false;
 
   function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -215,6 +220,13 @@ if (typeof document !== "undefined") {
     return node;
   }
   function updateControls() {
+    document.body.dataset.busy = String(working || serverBusy);
+    const homepageBusy = working || serverBusy || !canApprove;
+    $("homepage-save").disabled = homepageBusy || !homepageDirty;
+    $("homepage-discard").disabled = homepageBusy || !homepageDirty;
+    document.querySelectorAll("[data-homepage-move]").forEach(node => {
+      node.disabled = homepageBusy || node.dataset.boundary === "true";
+    });
     document.querySelectorAll("[data-write]").forEach((node) => {
       node.hidden = !canApprove;
       node.disabled = working || serverBusy;
@@ -793,6 +805,8 @@ if (typeof document !== "undefined") {
       else link.removeAttribute("aria-current");
     });
     $("setup").hidden = tab !== "setup" || !canApprove;
+    $("homepage").hidden = tab !== "homepage" || !canApprove;
+    if (tab === "homepage" && canApprove) renderHomepage();
     $("signing-keys").hidden = tab !== "replacements" || !canApprove;
     $("catalog-heading").hidden = showingApp || tab !== "apps";
     $("catalog-view").hidden = showingApp || tab !== "apps";
@@ -834,6 +848,18 @@ if (typeof document !== "undefined") {
       if (canApprove && snapshot.signingKeys) {
         signingKeys = snapshot.signingKeys;
         renderSigningKeys();
+      }
+      if (canApprove && snapshot.homepage && snapshot.homepage.revision >= homepage.revision) {
+        homepage = snapshot.homepage;
+        if (!homepageDirty) {
+          homepageDraft = [...homepage.pinned];
+          homepageHidden = [...homepage.hidden];
+          homepageRevision = homepage.revision;
+        } else {
+          homepageDraft = homepageDraft.filter(id => homepage.order.includes(id));
+          homepageHidden = homepageHidden.filter(id => homepage.order.includes(id));
+          homepageStatus();
+        }
       }
       const notifications = snapshot.notifications;
       if (canApprove && notifications) {
@@ -929,7 +955,7 @@ if (typeof document !== "undefined") {
     auditView = null;
     render();
     syncSandstormPath();
-    const heading = document.querySelector(currentAppId() ? "#app-detail h1" : currentTab() === "setup" ? "#setup-heading" : currentTab() === "replacements" ? "#signing-keys-heading" : "#catalog-heading h1");
+    const heading = document.querySelector(currentAppId() ? "#app-detail h1" : currentTab() === "homepage" ? "#homepage-heading" : currentTab() === "setup" ? "#setup-heading" : currentTab() === "replacements" ? "#signing-keys-heading" : "#catalog-heading h1");
     if (heading) {
       heading.tabIndex = -1;
       heading.focus();
@@ -951,6 +977,100 @@ if (typeof document !== "undefined") {
     render();
   };
   $("notification-recipient").oninput = () => { notificationDirty = true; };
+  function homepageStatus() {
+    $("homepage-status").textContent = homepageDirty
+      ? homepageRevision !== homepage.revision
+        ? "The saved homepage changed in another session. Discard changes to load it before editing again."
+        : "Unsaved changes."
+      : "Homepage changes saved.";
+  }
+  function renderHomepage(focusId, focusAction) {
+    if (currentTab() !== "homepage" || !canApprove) return;
+    const focused = document.activeElement;
+    if (!focusId && focused?.closest("#homepage-order")) {
+      focusId = focused.closest("[data-app-id]")?.dataset.appId;
+      focusAction = focused.dataset.homepageMove;
+    }
+    const groups = new Map(groupApps(items).map(versions => [versions[0].app.appId, versions]));
+    const ids = [...homepageDraft, ...homepage.order.filter(id => !homepageDraft.includes(id) && !homepageHidden.includes(id)),
+      ...homepageHidden];
+    $("homepage-order").replaceChildren(...ids.map(id => {
+      const versions = groups.get(id);
+      const release = versions?.find(version => version.current);
+      const app = release?.app;
+      const index = homepageDraft.indexOf(id);
+      const pinned = index >= 0;
+      const hidden = homepageHidden.includes(id);
+      const row = element("li");
+      row.dataset.appId = id;
+      const label = element("div", undefined, "homepage-app");
+      label.append(element("strong", app?.name || id));
+      const state = hidden ? "Hidden from homepage" : pinned ? "Pinned" : "Unpinned";
+      label.append(element("span", state, "meta"));
+      const controls = element("div", undefined, "actions");
+      function action(name, text, callback, boundary = false) {
+        const control = button(text, () => {
+          callback();
+          homepageDirty = true;
+          renderHomepage(id, name);
+        });
+        control.setAttribute("aria-label", name + ": " + (app?.name || id));
+        control.title = name;
+        control.dataset.homepageMove = name;
+        control.dataset.boundary = String(boundary);
+        controls.append(control);
+      }
+      if (hidden) {
+        action("Unhide", "Unhide", () => { homepageHidden = homepageHidden.filter(value => value !== id); });
+      } else {
+        if (pinned) {
+          for (const [name, arrow, target] of [["Move up", "↑", index - 1], ["Move down", "↓", index + 1]]) {
+            action(name, arrow, () => {
+              homepageDraft.splice(target, 0, ...homepageDraft.splice(index, 1));
+            }, target < 0 || target >= homepageDraft.length);
+          }
+          action("Unpin", "Unpin", () => { homepageDraft = homepageDraft.filter(value => value !== id); });
+        } else {
+          action("Pin", "Pin", () => { homepageDraft.push(id); });
+        }
+        action("Hide", "Hide", () => {
+          homepageDraft = homepageDraft.filter(value => value !== id);
+          homepageHidden.push(id);
+        });
+      }
+      row.append(label, controls);
+      return row;
+    }));
+    if (!ids.length) $("homepage-order").append(element("li", "No published apps yet."));
+    homepageStatus();
+    updateControls();
+    if (focusId) {
+      const row = [...$("homepage-order").children].find(row => row.dataset.appId === focusId);
+      const control = row?.querySelector(`[data-homepage-move="${focusAction}"]:not(:disabled)`)
+        || row?.querySelector("button:not(:disabled)");
+      control?.focus();
+    }
+  }
+  $("homepage-save").onclick = () => runAction(async () => {
+    await request("homepage", JSON.stringify({revision: homepageRevision, pinned: homepageDraft, hidden: homepageHidden}));
+    homepage = {...homepage, revision: homepageRevision + 1, pinned: [...homepageDraft], hidden: [...homepageHidden]};
+    homepageRevision = homepage.revision;
+    homepageDirty = false;
+    homepageStatus();
+    try {
+      await refresh();
+      notice("message", "Homepage changes saved.");
+    } catch (err) {
+      notice("error", `Homepage changes were saved, but the view could not refresh: ${err.message}`);
+    }
+  });
+  $("homepage-discard").onclick = () => {
+    homepageDraft = [...homepage.pinned];
+    homepageHidden = [...homepage.hidden];
+    homepageRevision = homepage.revision;
+    homepageDirty = false;
+    renderHomepage();
+  };
   function renderSigningKeys() {
     const apps = new Map(groupApps(items).map(versions => [versions[0].app.appId, versions[0]]));
     $("signing-key-rows").replaceChildren(...signingKeys.rules.map(rule => {

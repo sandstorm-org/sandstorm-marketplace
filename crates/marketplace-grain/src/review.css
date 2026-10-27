@@ -18,7 +18,8 @@ strong, summary { font-weight: 600; }
 button, input, select, textarea { font: inherit; }
 button { border: 1px solid #cfb5d6; background: #eddff5; color: var(--accent); border-radius: 0; padding: .45rem .85rem; cursor: pointer; font-weight: 400; }
 button:hover { background: #f3e9f9; border-color: #ac65b9; }
-button:disabled { opacity: .5; cursor: wait; }
+button:disabled { opacity: .5; cursor: default; }
+body[data-busy="true"] button:disabled { cursor: wait; }
 .primary { background: var(--accent); color: white; border-color: var(--accent); }
 .primary:hover { background: #5d246b; border-color: #5d246b; }
 .danger { background: white; color: #9b3348; border-color: #dfbec6; }
@@ -153,3 +154,11 @@ dialog .actions { justify-content: flex-end; }
 .release .package-id, .release .pgp-fingerprint { margin: .35rem 0; }
 .lookup-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 .lookup-link:disabled { cursor: default; opacity: .6; }
+.homepage-order { padding-left: 2rem; }
+.homepage-order li { padding: .8rem; margin-bottom: .5rem; border-bottom: 1px solid var(--line); }
+.homepage-app { display: inline-flex; flex-direction: column; gap: .25rem; vertical-align: middle; }
+.homepage-order .actions { float: right; margin: 0; }
+.homepage-order li::after { content: ""; display: block; clear: both; }
+@media (max-width: 600px) {
+  .homepage-order .actions { float: none; margin-top: .5rem; }
+}

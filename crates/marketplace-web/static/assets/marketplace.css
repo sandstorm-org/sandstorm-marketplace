@@ -63,6 +63,18 @@ main { max-width: 100rem; margin: auto; padding: 3rem 2rem 4rem clamp(1rem, 5vw,
 .button:hover { background: #5d246b; border-color: #5d246b; color: white; }
 .grid .button { display: block; background: #eddff5; color: var(--accent); border: 0; padding: .5rem; font-size: .875rem; text-transform: uppercase; }
 .grid .button:hover { background: #f3e9f9; }
+.featured-description { display: none; }
+@media (min-width: 48rem) {
+  .grid article.featured { grid-column: span 3; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr auto; gap: .5rem 1.5rem; }
+  .featured .card-link { display: contents; }
+  .featured .app-icon { grid-column: 1; grid-row: 1 / 4; align-self: center; margin: 0; max-height: 20rem; }
+  .featured .card-text { grid-column: 2; grid-row: 1; }
+  .featured h2 { font-size: 2rem; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; }
+  .featured .desc { font-size: 1.1rem; white-space: normal; margin: .5rem 0; }
+  .featured .featured-description { grid-column: 2; grid-row: 2; display: block; max-height: 8rem; overflow: hidden; font-size: .9rem; line-height: 1.5; mask-image: linear-gradient(black 70%, transparent); }
+  .featured-description > :first-child { margin-top: 0; }
+  .featured .actions { grid-column: 2; grid-row: 3; }
+}
 #empty-results { margin-top: 2rem; }
 .back { display: inline-block; margin-bottom: 1rem; }
 .card { padding: 2rem 2.6rem 3rem; background: white; box-shadow: 1px 2px 0 #a694b2; }

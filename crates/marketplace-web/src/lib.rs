@@ -155,6 +155,9 @@ struct ListingApp<'a> {
     package_url: String,
     categories_json: String,
     search_text: String,
+    featured: bool,
+    homepage_hidden: bool,
+    description_html: String,
 }
 
 struct SocialLink {
@@ -312,6 +315,9 @@ fn listing<'a>(app: &'a AppSummary, package_base_url: &str) -> ListingApp<'a> {
     let author = app.author.as_ref();
     ListingApp {
         app,
+        featured: false,
+        homepage_hidden: false,
+        description_html: String::new(),
         package_url: join_url(package_base_url, &app.package_id),
         categories_json: serde_json::to_string(&app.categories).expect("string serialization"),
         search_text: format!(

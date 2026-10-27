@@ -106,6 +106,8 @@ fn publish_generation_inner(
 
 fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> {
     let index = LoadedAppIndex::load(source)?;
+    let homepage = marketplace_model::homepage::HomepageOrder::load(source)?;
+    fs::write(stage.join("homepage.json"), serde_json::to_vec(&homepage)?)?;
     // Copy only the public catalog, never private metadata or submission state.
     for directory in ["apps", "experimental", "images", "packages"] {
         let path = source.join(directory);
@@ -146,7 +148,7 @@ fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> 
             merged.insert(app.app_id.clone(), app);
         }
     }
-    updates.index.apps.sort_by(|a, b| a.name.cmp(&b.name));
+    homepage.sort(&mut updates.index.apps);
     let base = package_base.unwrap_or("/packages");
     for app in merged.values() {
         safe_name(&app.app_id)?;
@@ -332,6 +334,30 @@ fn home(
     base: &str,
     experimental: bool,
 ) -> Result<String> {
+    let mut apps: Vec<_> = index
+        .index
+        .apps
+        .iter()
+        .filter(|app| tag.is_none_or(|tag| app.categories.iter().any(|category| category == tag)))
+        .map(|app| listing(app, base))
+        .collect();
+    if tag.is_none() {
+        let settings = marketplace_model::homepage::HomepageOrder::load(&index.root)?;
+        for app in &mut apps {
+            app.homepage_hidden = settings.hidden.contains(&app.app.app_id);
+        }
+        if let Some(first) = apps.iter_mut().find(|app| !app.homepage_hidden) {
+            let directory = if experimental { "experimental" } else { "apps" };
+            let details: AppDetailsForMarket = serde_json::from_slice(&fs::read(
+                index
+                    .root
+                    .join(directory)
+                    .join(format!("{}.json", first.app.app_id)),
+            )?)?;
+            first.featured = true;
+            first.description_html = crate::render_markdown(&details.description);
+        }
+    }
     Ok(HomeTemplate {
         author_title: None,
         author_profile: None,
@@ -339,15 +365,7 @@ fn home(
         show_welcome: tag.is_none(),
         search_action: crate::home_href(tag, ""),
         tags: build_tag_chips(index, tag, ""),
-        apps: index
-            .index
-            .apps
-            .iter()
-            .filter(|app| {
-                tag.is_none_or(|tag| app.categories.iter().any(|category| category == tag))
-            })
-            .map(|app| listing(app, base))
-            .collect(),
+        apps,
         search: String::new(),
         experimental,
     }
@@ -543,6 +561,7 @@ mod tests {
             copy_flat_directory(&fixtures.join(dir), &source.join(dir))?;
         }
         let mut index = LoadedAppIndex::load(&source)?.index;
+        index.apps.sort_by(|a, b| a.name.cmp(&b.name));
         // The publisher copies immutable files with hard links when possible.
         // Detach this test's mutable index before rewriting it so parallel tests
         // and the checked-in fixture retain their original catalog.

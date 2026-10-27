@@ -64,7 +64,8 @@ if (typeof document !== "undefined")
     const cards = document.querySelectorAll("article[data-search]");
     let visible = 0;
     cards.forEach((card) => {
-      card.hidden = !matchesApp(
+      card.classList.toggle("featured", card.hasAttribute("data-featured") && !query && !tag && !authorPage);
+      card.hidden = (card.hasAttribute("data-homepage-hidden") && !query && !tag && !authorPage) || !matchesApp(
         card.dataset.search,
         JSON.parse(card.dataset.categories),
         query,

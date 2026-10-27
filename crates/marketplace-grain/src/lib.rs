@@ -2,6 +2,7 @@
 include!(concat!(env!("OUT_DIR"), "/schemas.rs"));
 pub mod audit;
 mod catalog;
+mod homepage;
 pub mod ids;
 mod import;
 mod keybase;
