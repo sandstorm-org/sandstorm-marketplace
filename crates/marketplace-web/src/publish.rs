@@ -543,6 +543,10 @@ mod tests {
             copy_flat_directory(&fixtures.join(dir), &source.join(dir))?;
         }
         let mut index = LoadedAppIndex::load(&source)?.index;
+        // The publisher copies immutable files with hard links when possible.
+        // Detach this test's mutable index before rewriting it so parallel tests
+        // and the checked-in fixture retain their original catalog.
+        fs::remove_file(source.join("apps/index.json"))?;
         let fingerprint = "AABBCCDD".repeat(5);
         for app in &mut index.apps {
             app.author.as_mut().unwrap().name = "Same Name".into();
