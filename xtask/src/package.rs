@@ -14,8 +14,8 @@ use std::{
 };
 
 pub const APP_ID: &str = "3theazdrcs30r9qysmh6ks0vndm3z4xkuk6k9qmu506h7mamvqg0";
-pub const APP_VERSION: u32 = 9;
-pub const MARKETING_VERSION: &str = "0.4.3";
+pub const APP_VERSION: u32 = 10;
+pub const MARKETING_VERSION: &str = "0.4.4";
 
 pub struct Release {
     pub test_key: bool,

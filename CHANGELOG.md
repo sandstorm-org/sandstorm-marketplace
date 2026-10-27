@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.4 — 2026-10-27
+
+- Added author pages that group apps by Keybase identity or PGP fingerprint, with
+  profile pictures, social links, and links from app listings.
+- Show names from signing PGP keys when no author profile is available, marked
+  as unverified. Signature-only author pages explain how to connect the key to
+  Keybase.
+- Improved author presentation with larger names and social icons on app pages,
+  and service icons beside usernames on author pages.
+- Added a Debugging section under Setup with controls to rebuild the public site
+  and refresh all authors’ Keybase profiles. Bulk refresh preserves existing
+  profiles when lookups fail, reports failures, and rebuilds the site after
+  successful updates.
+- Cache downloaded SPKs during catalog syncs, reuse completed downloads on
+  subsequent runs, and build import archives from the cache. Interrupted downloads
+  are retried automatically.
+- Added support for BZip2-compressed PGP author proofs, including Desert Atlas.
+
 ## 0.4.3 — 2026-10-22
 
 - Fixed SPK imports failing when an author’s PGP key includes third-party
