@@ -779,8 +779,8 @@ impl Registry {
             let info = release.metadata.get_root::<p::verified_info::Reader>()?;
             let status = release.status.get_root::<s::submission_status::Reader>()?;
             let app_id = release.app_id.clone();
-            let entry = self
-                .catalog_entry(info, status.get_publish_date())
+            let entry = crate::catalog::parse_for_review(info, status.get_publish_date())
+                .and_then(|entry| self.populate_author(info, entry))
                 .map(|entry| (entry.app, entry.details));
             let validation_error = release
                 .key_error
@@ -881,7 +881,13 @@ impl Registry {
         info: p::verified_info::Reader<'a>,
         published: i64,
     ) -> Result<crate::catalog::Entry<'a>> {
-        let mut entry = crate::catalog::parse(info, published)?;
+        self.populate_author(info, crate::catalog::parse(info, published)?)
+    }
+    fn populate_author<'a>(
+        &self,
+        info: p::verified_info::Reader<'a>,
+        mut entry: crate::catalog::Entry<'a>,
+    ) -> Result<crate::catalog::Entry<'a>> {
         entry.app.author = self.author_profile(entry.fingerprint)?;
         if entry.app.author.is_none() {
             // Imported profiles describe this exact package, not a verified Keybase

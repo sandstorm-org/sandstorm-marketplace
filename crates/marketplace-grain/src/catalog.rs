@@ -87,6 +87,22 @@ impl Entry<'_> {
     }
 }
 pub(crate) fn parse<'a>(info: p::verified_info::Reader<'a>, published: i64) -> Result<Entry<'a>> {
+    parse_listing(info, published, true)
+}
+
+/// Review tables need text and an icon, not screenshot assets or their hashes.
+pub(crate) fn parse_for_review<'a>(
+    info: p::verified_info::Reader<'a>,
+    published: i64,
+) -> Result<Entry<'a>> {
+    parse_listing(info, published, false)
+}
+
+fn parse_listing<'a>(
+    info: p::verified_info::Reader<'a>,
+    published: i64,
+    screenshots_needed: bool,
+) -> Result<Entry<'a>> {
     let meta = info.get_metadata()?;
     let icons = meta.get_icons();
     let mut assets = Vec::new();
@@ -120,17 +136,19 @@ pub(crate) fn parse<'a>(info: p::verified_info::Reader<'a>, published: i64) -> R
         };
     }
     let mut screenshots = Vec::new();
-    for shot in meta.get_screenshots()? {
-        let image_id = match shot.which()? {
-            p::metadata::screenshot::Png(png) => collect_image(png?, "png"),
-            p::metadata::screenshot::Jpeg(jpeg) => collect_image(jpeg?, "jpeg"),
-            _ => bail!("unknown screenshot format"),
-        };
-        screenshots.push(Screenshot {
-            image_id,
-            width: shot.get_width(),
-            height: shot.get_height(),
-        });
+    if screenshots_needed {
+        for shot in meta.get_screenshots()? {
+            let image_id = match shot.which()? {
+                p::metadata::screenshot::Png(png) => collect_image(png?, "png"),
+                p::metadata::screenshot::Jpeg(jpeg) => collect_image(jpeg?, "jpeg"),
+                _ => bail!("unknown screenshot format"),
+            };
+            screenshots.push(Screenshot {
+                image_id,
+                width: shot.get_width(),
+                height: shot.get_height(),
+            });
+        }
     }
     let (is_open_source, license) = match meta.get_license().which()? {
         p::metadata::license::OpenSource(value) => (

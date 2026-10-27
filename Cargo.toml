@@ -30,3 +30,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # cargo xtask runs in the dev profile, even when packaging a release binary.
 [profile.dev.package.lzma-rust2]
 opt-level = 3
+
+# PGP author verification uses big-integer arithmetic even in the dev grain.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
