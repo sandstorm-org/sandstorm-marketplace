@@ -54,7 +54,15 @@
 <section id="notifications" class="card" aria-labelledby="notifications-heading"><h2 id="notifications-heading">Notifications</h2>
 <p>Email an administrator or distribution list when an author requests review or publication. Leave blank to disable. Changing the address discards queued messages for the previous address; a message already being sent may still arrive.</p>
 <form id="notifications-form"><label for="notification-recipient">Notification email</label> <input id="notification-recipient" type="email" maxlength="254" placeholder="Unset" autocomplete="off"><button id="notifications-save" type="submit" data-write>Save</button></form>
-<p id="notification-status" class="meta" role="status"></p><button id="notifications-retry" type="button" hidden>Retry pending emails</button></section></section>
+<p id="notification-status" class="meta" role="status"></p><button id="notifications-retry" type="button" hidden>Retry pending emails</button></section>
+<section class="card" aria-labelledby="debugging-heading"><h2 id="debugging-heading">Debugging</h2>
+<p>Rebuilding the public site should only be necessary during development of the marketplace itself. The site updates automatically during normal use.</p>
+<button id="rebuild-public-site" type="button" data-write>Rebuild public site</button>
+<p id="rebuild-public-site-status" class="meta" role="status"></p>
+<p>Refresh all authors’ Keybase profiles to update names, pictures, and social links, then rebuild the public site. Connect Keybase above first. Authors without a matching Keybase account keep their existing information.</p>
+<button id="refresh-keybase-authors" type="button" data-write>Refresh all authors’ Keybase profiles</button>
+<p id="refresh-keybase-authors-status" class="meta" role="status"></p>
+<ul id="refresh-keybase-authors-errors"></ul></section></section>
 <section id="signing-keys" hidden aria-labelledby="signing-keys-heading">
 <div class="toolbar catalog-heading"><h1 id="signing-keys-heading" class="catalog-title">Key replacements</h1></div>
 <div class="card">

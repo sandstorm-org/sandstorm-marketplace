@@ -226,6 +226,7 @@ if (typeof document !== "undefined") {
     $("spk-import-submit").disabled = working || serverBusy;
     $("spk-import-files").disabled = working || serverBusy;
     $("notifications-retry").disabled = working || serverBusy || notificationSending;
+    $("refresh-keybase-authors").disabled = working || serverBusy || !keybaseConnected;
     notice(
       "access-note",
       !canApprove
@@ -1076,6 +1077,36 @@ if (typeof document !== "undefined") {
       await refresh();
     });
   };
+  $("rebuild-public-site").onclick = () => runAction(async () => {
+    $("rebuild-public-site-status").textContent = "Rebuilding public site…";
+    try {
+      await request("reindex", "");
+      $("rebuild-public-site-status").textContent = "Public site rebuilt.";
+    } catch (err) {
+      $("rebuild-public-site-status").textContent = "Public site rebuild failed.";
+      throw err;
+    }
+  });
+  $("refresh-keybase-authors").onclick = () => runAction(async () => {
+    const status = $("refresh-keybase-authors-status");
+    const errors = $("refresh-keybase-authors-errors");
+    errors.replaceChildren();
+    status.textContent = "Refreshing author profiles from Keybase… This may take a few minutes.";
+    try {
+      const summary = await (await request("keybase-refresh-all", "")).json();
+      keybaseProfiles.clear();
+      status.textContent = `Refreshed ${summary.refreshed} of ${summary.total} author profiles.` +
+        (summary.refreshed ? " Public site rebuilt." : "") +
+        (summary.failed.length ? ` ${summary.failed.length} lookups failed; existing profiles were kept.` : "");
+      for (const failure of summary.failed) {
+        errors.append(element("li", `${failure.fingerprint}: ${failure.error}`));
+      }
+      await refresh();
+    } catch (err) {
+      status.textContent = "Author profile refresh did not complete.";
+      throw err;
+    }
+  });
   $("notifications-retry").onclick = () => runAction(async () => {
     await request("notifications/retry", "");
     notice("message", "Pending email delivery requested.");

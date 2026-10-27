@@ -48,6 +48,7 @@ async fn saved_keybase_connection_is_reported_only_to_approvers() -> Result<()> 
             assert_eq!(snapshot(&reviewer).await?["keybaseConnected"], false);
             for path in [
                 "keybase-pb-token",
+                "keybase-refresh-all",
                 "keybase/0123456789abcdef0123456789abcdef",
             ] {
                 let response = post(&reviewer, path, b"test-token").await?;
@@ -61,6 +62,13 @@ async fn saved_keybase_connection_is_reported_only_to_approvers() -> Result<()> 
             }
             db.execute("DELETE FROM capabilities WHERE name='keybase'", [])?;
             assert_eq!(snapshot(&approver).await?["keybaseConnected"], false);
+            let response = post(&approver, "keybase-refresh-all", b"").await?;
+            match response.get()?.which()? {
+                web::response::ClientError(error) => {
+                    assert!(error.get_description_html()?.to_str()?.contains("Connect Keybase"));
+                }
+                _ => anyhow::bail!("refresh without Keybase connection was allowed"),
+            }
             Ok(())
         })
         .await

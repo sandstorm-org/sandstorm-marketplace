@@ -748,3 +748,34 @@ test('multiple SPK imports report failures and continue submitting valid files',
   await page.goto('/reviewer/');
   await expect(page.locator('#spk-import')).toBeHidden();
 });
+
+test('debugging refreshes all Keybase authors and reports partial failures', async ({ page }) => {
+  let connected = false;
+  await page.route('**/admin/admin', async route => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    snapshot.keybaseConnected = connected;
+    await route.fulfill({ response, json: snapshot });
+  });
+  let calls = 0;
+  await page.route('**/admin/keybase-refresh-all', async route => {
+    expect(route.request().method()).toBe('POST');
+    calls++;
+    await route.fulfill({ json: {
+      total: 2, refreshed: 1,
+      failed: [{ fingerprint: 'AB'.repeat(20), error: 'Keybase identity not found' }],
+    } });
+  });
+  await page.goto('/admin/setup');
+  const button = page.getByRole('button', { name: 'Refresh all authors’ Keybase profiles', exact: true });
+  await expect(button).toBeDisabled();
+  connected = true;
+  await page.reload();
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(page.locator('#refresh-keybase-authors-status')).toHaveText(
+    'Refreshed 1 of 2 author profiles. Public site rebuilt. 1 lookups failed; existing profiles were kept.');
+  await expect(page.locator('#refresh-keybase-authors-errors')).toContainText('Keybase identity not found');
+  await expect(button).toBeEnabled();
+  expect(calls).toBe(1);
+});

@@ -74,6 +74,46 @@ pub async fn lookup(
     platform: &PlatformSlot,
     fingerprint: &str,
 ) -> Result<Value> {
+    let result = lookup_profile(registry, platform, fingerprint).await?;
+    registry.publish()?;
+    Ok(result)
+}
+
+pub async fn refresh_all(registry: &Registry, platform: &PlatformSlot) -> Result<Value> {
+    ensure!(connected(registry)?, "Connect Keybase before refreshing author profiles");
+    let fingerprints: std::collections::BTreeSet<_> = registry.queue()?.into_iter()
+        .map(|release| release.fingerprint.to_ascii_uppercase())
+        .filter(|fingerprint| !fingerprint.is_empty())
+        .collect();
+    let mut refreshed = 0;
+    let mut failed = Vec::new();
+    for fingerprint in &fingerprints {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            lookup_profile(registry, platform, fingerprint),
+        ).await;
+        match result {
+            Ok(Ok(_)) => refreshed += 1,
+            error => failed.push(json!({
+                "fingerprint": fingerprint,
+                "error": match error {
+                    Ok(Err(error)) => format!("{error:#}"),
+                    _ => "Keybase lookup timed out".to_string(),
+                },
+            })),
+        }
+    }
+    if refreshed > 0 {
+        registry.publish()?;
+    }
+    Ok(json!({"total": fingerprints.len(), "refreshed": refreshed, "failed": failed}))
+}
+
+async fn lookup_profile(
+    registry: &Registry,
+    platform: &PlatformSlot,
+    fingerprint: &str,
+) -> Result<Value> {
     ensure!(
         (32..=64).contains(&fingerprint.len())
             && fingerprint.bytes().all(|c| c.is_ascii_hexdigit()),
@@ -190,7 +230,6 @@ pub async fn lookup(
         )?;
         Ok(())
     })?;
-    registry.publish()?;
     Ok(result)
 }
 struct Collector {
