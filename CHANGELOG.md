@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.7 — 2026-11-05
+
+- Remember Sandstorm servers across marketplace visits, with a chooser to switch
+  between saved servers or forget them. Navigation URLs no longer carry the host.
+- Prefill private listing installation dialogs with the remembered server and
+  save successful server selections.
+- Automatically reject pending versions of the same app when approving a release
+  if they were received earlier and have lower build numbers. Later submissions,
+  existing review decisions, and releases without a known receipt order stay
+  unchanged. Approval and automatic rejections are saved together with audit
+  history and rejection reasons identifying the approved release.
+
 ## 0.4.6 — 2026-10-27
 
 - Made the public header search focus outline surround both the input and button.
