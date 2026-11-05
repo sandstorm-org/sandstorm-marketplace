@@ -26,6 +26,7 @@
       </form>
       {% endif %}
     </header>
+    {% include "server-chooser.html" %}
     <main class="app-page">
       {% if let Some(deprecation) = app.deprecation %}
       <p class="deprecation-notice" role="status"><strong>This app is deprecated.</strong> It is no longer listed in the marketplace. Existing releases remain available to download.

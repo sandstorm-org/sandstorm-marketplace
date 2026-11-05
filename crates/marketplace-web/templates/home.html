@@ -23,6 +23,7 @@
         <button class="search-submit" type="submit" aria-label="Search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></svg></button>
       </form>
     </header>
+    {% include "server-chooser.html" %}
     <section class="welcome" id="welcome"{% if !show_welcome %} hidden{% endif %}><p><strong>Sandstorm</strong> is a self-hostable web productivity suite.</p></section>
     <p class="intro">Install any of the apps below with just one click.</p>
     <main>
