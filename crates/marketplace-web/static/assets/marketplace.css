@@ -35,6 +35,14 @@ button, input { font: inherit; }
 button, a, input { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 3px solid #ac65b9; outline-offset: 4px; }
 [hidden] { display: none !important; }
+.server-chooser { padding: .6rem 1rem; background: white; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.server-chooser summary { cursor: pointer; color: var(--accent); }
+.server-chooser ul { list-style: none; padding: 0 0 0 1rem; margin: .4rem 0 0; }
+.server-chooser li { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; }
+.server-chooser li a { min-width: 0; }
+.server-chooser button { margin-left: auto; flex-shrink: 0; cursor: pointer; background: white; color: var(--accent); border: 1px solid var(--line); border-radius: .2rem; padding: .15rem .5rem; }
+.server-chooser button:hover { background: var(--background); }
+.server-chooser p { margin: 0; color: var(--accent); }
 h1, h2, p { margin-top: 0; }
 h1 { font-size: 2rem; font-weight: 300; line-height: 1.2; }
 .masthead { display: flex; align-items: center; gap: 1rem; min-height: 4.8rem; padding: .65rem clamp(1rem, 1.6vw, 1.5rem); background: linear-gradient(165deg, #723086, #552976 60%, #603281 60.1%, #4e2e77); color: white; }

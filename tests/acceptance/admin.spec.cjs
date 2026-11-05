@@ -17,6 +17,68 @@ function release(page, version) {
 test.beforeEach(async ({ request }) => {
   expect((await request.post('/__test/reset')).ok()).toBeTruthy();
 });
+test('marketplace remembers the server across visits and accepts a new host', async ({ page, context }) => {
+  await page.goto('/?host=https://first.example/some/path');
+  await expect(page.locator('#server-chooser details')).toBeHidden();
+  await expect(page.locator('#server-chooser p')).toBeVisible();
+  await page.goto('/');
+  await expect(page.locator('[data-install]').first()).toHaveAttribute('href', /^https:\/\/first\.example\/install\//);
+  const nextVisit = await context.newPage();
+  await nextVisit.goto('/');
+  await expect(nextVisit.locator('[data-install]').first()).toHaveAttribute('href', /^https:\/\/first\.example\/install\//);
+  await nextVisit.goto('/?host=http://local.sandstorm.io:6080');
+  await nextVisit.goto('/?host=javascript:alert(1)');
+  await expect(nextVisit.locator('[data-install]').first()).toHaveAttribute('href', /^http:\/\/local\.sandstorm\.io:6080\/install\//);
+  await nextVisit.goto('/');
+  await expect(nextVisit.locator('#server-chooser summary')).toHaveText('Install on: http://local.sandstorm.io:6080');
+  await nextVisit.locator('#server-chooser summary').click();
+  await expect(nextVisit.locator('#server-chooser li a')).toHaveText(['https://first.example']);
+  await nextVisit.getByRole('link', { name: 'https://first.example', exact: true }).click();
+  await expect(nextVisit.locator('[data-install]').first()).toHaveAttribute('href', /^https:\/\/first\.example\/install\//);
+  await nextVisit.goto('/');
+  await expect(nextVisit.locator('#server-chooser summary')).toHaveText('Install on: https://first.example');
+  await nextVisit.locator('#server-chooser summary').click();
+  await expect(nextVisit.locator('#server-chooser li a')).toHaveText(['http://local.sandstorm.io:6080']);
+  await nextVisit.getByRole('button', { name: 'Forget http://local.sandstorm.io:6080', exact: true }).click();
+  await expect(nextVisit.locator('#server-chooser details')).toBeHidden();
+  await expect(nextVisit.locator('#server-chooser p')).toHaveText('Install on: https://first.example');
+  await nextVisit.reload();
+  await expect(nextVisit.locator('#server-chooser details')).toBeHidden();
+  await expect(nextVisit.locator('#server-chooser li')).toHaveCount(0);
+  await expect(nextVisit.locator('[data-install]').first()).toHaveAttribute('href', /^https:\/\/first\.example\/install\//);
+});
+
+test('marketplace preserves a previously saved server when starting its history', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('sandstormServer', 'https://previous.example'));
+  await page.goto('/?host=https://new.example');
+  await page.locator('#server-chooser summary').click();
+  await expect(page.locator('#server-chooser li a')).toHaveText(['https://previous.example']);
+});
+
+test('marketplace remembers a manually entered server', async ({ page }) => {
+  await page.route('https://manual.example/**', route => route.fulfill({ body: 'Installer' }));
+  await page.goto('/');
+  page.once('dialog', dialog => dialog.accept('https://manual.example'));
+  await page.locator('[data-install]').first().click();
+  await expect(page).toHaveURL(/^https:\/\/manual\.example\/install\//);
+  await page.goto('/');
+  await expect(page.locator('[data-install]').first()).toHaveAttribute('href', /^https:\/\/manual\.example\/install\//);
+});
+
+test('marketplace installation works when browser storage is blocked', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', { get() { throw new Error('Storage blocked'); } });
+  });
+  await page.goto('/?host=https://first.example');
+  await expect(page.locator('[data-install]').first()).toHaveAttribute('href', /^https:\/\/first\.example\/install\//);
+  await page.goto('/');
+  await page.route('https://manual.example/**', route => route.fulfill({ body: 'Installer' }));
+  page.once('dialog', dialog => dialog.accept('https://manual.example'));
+  await page.locator('[data-install]').first().click();
+  await expect(page).toHaveURL(/^https:\/\/manual\.example\/install\//);
+});
+
 test('review, publish, history, rollback, rejection, and restoring latest', async ({ page, request }) => {
   await page.goto('/admin/');
   await expect(page.locator('#queue').getByRole('table')).toBeVisible();
@@ -209,16 +271,19 @@ test('experimental mode filters to pending updates and preserves mode through na
   await expect(page.getByText('Unreviewed app')).toHaveCount(0);
   await page.locator(`[data-tag="${pending.app.categories[0]}"]`).click();
   await expect(page).toHaveURL(/experimental=true/);
+  await expect(page).not.toHaveURL(/host=/);
   await expect(page.locator('[data-install]')).toHaveAttribute('data-package-id', pending.app.packageId);
   await page.getByRole('searchbox', { name: 'Search apps' }).fill('Rust');
   await page.getByRole('searchbox', { name: 'Search apps' }).press('Enter');
   await expect(page).toHaveURL(/experimental=true/);
+  await expect(page).not.toHaveURL(/host=/);
   await page.locator('.card-link').click();
   await expect(page.getByRole('status')).toHaveText('Experimental release · Pending approval');
   await expect(page.locator('.description-body')).toHaveText(/Description for build 3/);
   await expect(page.locator('.description-body')).not.toHaveText(/Description for build 2/);
   await expect(page.locator('.icon')).toHaveAttribute('src', `/images/${pending.app.imageId}`);
   const install = new URL(await page.locator('[data-install]').getAttribute('href'));
+  expect(install.origin).toBe('https://sandstorm.example');
   expect(install.pathname).toBe(`/install/${pending.app.packageId}`);
   expect(install.searchParams.get('url')).toBe(`http://127.0.0.1:9940/packages/${pending.app.packageId}`);
   await expect(page.getByRole('link', { name: 'Download SPK' })).toHaveAttribute('href', `/packages/${pending.app.packageId}`);
@@ -227,7 +292,7 @@ test('experimental mode filters to pending updates and preserves mode through na
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('link', { name: 'Back to all apps' }).click();
   await expect(page).toHaveURL(/experimental=true/);
-  await expect(page).toHaveURL(/host=/);
+  await expect(page).not.toHaveURL(/host=/);
   await request.post(`/admin/reject/${pending.app.packageId}`, { data: 'Not ready' });
   await page.reload();
   await expect(page.locator('[data-install]')).toHaveCount(0);

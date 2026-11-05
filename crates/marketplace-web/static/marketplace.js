@@ -17,6 +17,37 @@ function installUrl(host, packageId, packageUrl) {
   return `${origin}/install/${encodeURIComponent(packageId)}?url=${encodeURIComponent(packageUrl)}`;
 }
 
+function rememberedServers() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem("sandstormServers") || "[]");
+    const latest = window.localStorage.getItem("sandstormServer");
+    return [...new Set([latest, ...(Array.isArray(saved) ? saved : [])]
+      .map(serverOrigin).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+function rememberServer(value) {
+  const origin = serverOrigin(value);
+  if (origin) {
+    try {
+      const servers = [origin, ...rememberedServers().filter(server => server !== origin)];
+      window.localStorage.setItem("sandstormServers", JSON.stringify(servers));
+      window.localStorage.setItem("sandstormServer", origin);
+    } catch {
+      // Installation still works when browser storage is unavailable.
+    }
+  }
+  return origin;
+}
+
+function preferredServer(value) {
+  const origin = rememberServer(value);
+  if (origin) return origin;
+  return rememberedServers()[0] || null;
+}
+
 function matchesApp(searchText, categories, query, tag) {
   return (
     (!tag || categories.includes(tag)) &&
@@ -48,7 +79,49 @@ if (typeof document !== "undefined")
       content.querySelectorAll("script").forEach((script) => script.remove());
       document.body.replaceChildren(content);
     }
-    let host = serverOrigin(params.get("host"));
+    const host = preferredServer(params.get("host"));
+    const chooser = document.getElementById("server-chooser");
+    if (chooser && host) {
+      chooser.hidden = false;
+      const label = `Install on: ${host}`;
+      chooser.querySelector("summary").textContent = label;
+      chooser.querySelector("p").textContent = label;
+      const details = chooser.querySelector("details");
+      const list = chooser.querySelector("ul");
+      const updateChooser = () => {
+        const hasAlternates = list.children.length > 0;
+        details.hidden = !hasAlternates;
+        chooser.querySelector("p").hidden = hasAlternates;
+      };
+      rememberedServers().filter(server => server !== host).forEach(server => {
+        const item = document.createElement("li");
+        const name = document.createElement("a");
+        name.textContent = server;
+        const url = new URL(location.href);
+        url.searchParams.set("host", server);
+        name.href = url.href;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", `Forget ${server}`);
+        remove.addEventListener("click", () => {
+          try {
+            window.localStorage.setItem("sandstormServers", JSON.stringify(
+              rememberedServers().filter(saved => saved !== server),
+            ));
+          } catch {
+            window.alert("Unable to forget this server because browser storage is unavailable.");
+            return;
+          }
+          item.remove();
+          updateChooser();
+          if (!details.hidden) chooser.querySelector("summary").focus();
+        });
+        item.append(name, remove);
+        list.append(item);
+      });
+      updateChooser();
+    }
     const query = params.get("q") || "";
     const tag = categoryFromPath(location.pathname);
     const authorPage = location.pathname.startsWith("/author/");
@@ -85,20 +158,16 @@ if (typeof document !== "undefined")
       link.href = url.href;
     });
     document.querySelectorAll("form.search-form").forEach((form) => {
-      for (const [name, value] of [
-        ["host", host],
-        ["experimental", experimental ? "true" : null],
-      ]) {
-        if (!value) continue;
-        const field = document.createElement("input");
-        field.type = "hidden";
-        field.name = name;
-        field.value = value;
-        form.append(field);
-      }
+      if (!experimental) return;
+      const field = document.createElement("input");
+      field.type = "hidden";
+      field.name = "experimental";
+      field.value = "true";
+      form.append(field);
     });
-    // Carry the user's server through category links, app pages, and back links.
+    // Carry experimental mode through category links, app pages, and back links.
     document.querySelectorAll("a[href]").forEach((link) => {
+      if (link.closest("#server-chooser")) return;
       const url = new URL(link.href);
       if (
         url.origin === location.origin &&
@@ -107,7 +176,7 @@ if (typeof document !== "undefined")
           url.pathname.startsWith("/genre/") ||
           url.pathname.startsWith("/author/"))
       ) {
-        if (host) url.searchParams.set("host", host);
+        url.searchParams.delete("host");
         if (experimental) url.searchParams.set("experimental", "true");
         link.href = url.href;
       }
@@ -128,6 +197,7 @@ if (typeof document !== "undefined")
           window.alert("Enter an http:// or https:// Sandstorm server URL.");
           return;
         }
+        rememberServer(origin);
         location.href = installUrl(origin, link.dataset.packageId, packageUrl);
       });
     });
