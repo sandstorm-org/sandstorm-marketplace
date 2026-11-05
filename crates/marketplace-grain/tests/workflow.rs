@@ -13,6 +13,191 @@ mod common;
 use common::*;
 
 #[test]
+fn approval_rejects_only_pending_releases_with_earlier_receipts_and_builds() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let registry = Registry::new(dir.path().to_owned())?;
+    let releases: Vec<_> = (1..=11).map(|build| upload(&registry, build)).collect();
+    let db = rusqlite::Connection::open(dir.path().join("marketplace.sqlite"))?;
+    db.execute("UPDATE releases SET received_at='2026-01-01T00:00:00Z'", [])?;
+    // Approve build 9; lower builds 6, 7, and 8 have later, missing, and equal receipts.
+    for (index, timestamp) in [
+        (8, Some("2026-01-02T00:00:00Z")),
+        (5, Some("2026-01-03T00:00:00Z")),
+        (6, None),
+        (7, Some("2026-01-02T00:00:00Z")),
+        (10, Some("2026-01-03T00:00:00Z")),
+    ] {
+        db.execute(
+            "UPDATE releases SET received_at=? WHERE package_id=?",
+            rusqlite::params![timestamp, releases[index]],
+        )?;
+    }
+    for (index, id) in releases.iter().enumerate() {
+        if index != 2 {
+            registry.submission(&request(
+                id,
+                Some(if index == 3 {
+                    s::SubmissionState::Review
+                } else {
+                    s::SubmissionState::Publish
+                }),
+                1,
+            ))?;
+        }
+    }
+    registry.review(&releases[0], "approve", "")?;
+    registry.review(&releases[1], "reject", "Existing rejection")?;
+    let other_key = ed25519_dalek::SigningKey::from_bytes(&[43; 32]);
+    let mut file = registry.temporary()?;
+    file.write_all(&package_with_key(1, false, &other_key, "Other app"))?;
+    let other = registry.upload(file.path())?;
+    db.execute(
+        "UPDATE releases SET received_at='2026-01-01T00:00:00Z',request_state=2 WHERE package_id=?",
+        [&other],
+    )?;
+    let unchanged: Vec<_> = [0, 1, 2, 5, 6, 7, 9, 10]
+        .into_iter()
+        .map(|i| {
+            (
+                releases[i].clone(),
+                registry
+                    .submission(&request(&releases[i], None, 0))
+                    .unwrap(),
+            )
+        })
+        .collect();
+    let actor = marketplace_grain::audit::Actor {
+        kind: "sandstormIdentity".into(),
+        identity_id: Some("01".repeat(32)),
+        display_name: "Approver".into(),
+        signing_key: None,
+    };
+    registry
+        .with_actor(actor.clone())
+        .review(&releases[8], "approve", "")?;
+    for index in [3, 4] {
+        let response = registry.submission(&request(&releases[index], None, 0))?;
+        let message =
+            capnp::serialize_packed::read_message(&mut &response[1..], Default::default())?;
+        let status = message.get_root::<s::submission_status::Reader>()?;
+        let s::submission_status::NeedsUpdate(reason) = status.which()? else {
+            panic!("expected automatic rejection")
+        };
+        assert!(reason?.to_str()?.contains(&releases[8]));
+        assert_eq!(status.get_next_sequence_number(), 2);
+        assert!(
+            !dir.path()
+                .join("www/packages")
+                .join(&releases[index])
+                .exists()
+        );
+    }
+    for (id, before) in unchanged {
+        assert_eq!(registry.submission(&request(&id, None, 0))?, before);
+    }
+    assert_eq!(
+        registry
+            .queue()?
+            .iter()
+            .find(|r| r.app.package_id == other)
+            .unwrap()
+            .review,
+        "pending"
+    );
+    let app = ids::app_id(key().verifying_key().as_bytes());
+    let events = registry.audit_page(&app, None)?.events;
+    let automatic: Vec<_> = events
+        .iter()
+        .filter(|e| e.details["automatic"] == true)
+        .collect();
+    assert_eq!(automatic.len(), 2);
+    for event in automatic {
+        assert_eq!(event.action, "rejected");
+        assert_eq!(event.actor, actor);
+        assert_eq!(event.details["approvedPackageId"], releases[8]);
+    }
+    let reopened = Registry::new(dir.path().to_owned())?;
+    // An approval retry must not re-reject a release explicitly returned to review.
+    reopened.review(&releases[3], "unapprove", "")?;
+    let before = reopened.audit_page(&app, None)?.events.len();
+    reopened.review(&releases[8], "approve", "")?;
+    assert_eq!(reopened.audit_page(&app, None)?.events.len(), before);
+    assert_eq!(
+        reopened
+            .queue()?
+            .iter()
+            .find(|r| r.app.package_id == releases[3])
+            .unwrap()
+            .review,
+        "pending"
+    );
+    Ok(())
+}
+
+#[test]
+fn automatic_rejections_are_atomic_with_approval_and_survive_publication_failure()
+-> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let registry = Registry::new(dir.path().to_owned())?;
+    let first = upload(&registry, 1);
+    let second = upload(&registry, 2);
+    for id in [&first, &second] {
+        registry.submission(&request(id, Some(s::SubmissionState::Publish), 1))?;
+    }
+    let db = rusqlite::Connection::open(dir.path().join("marketplace.sqlite"))?;
+    db.execute(
+        "UPDATE releases SET received_at='2026-01-01T00:00:00Z' WHERE package_id=?",
+        [&first],
+    )?;
+    db.execute(
+        "UPDATE releases SET received_at='2026-01-02T00:00:00Z' WHERE package_id=?",
+        [&second],
+    )?;
+    db.execute_batch("CREATE TRIGGER fail_rejection BEFORE INSERT ON audit_events WHEN NEW.action='rejected' BEGIN SELECT RAISE(ABORT, 'test failure'); END;")?;
+    let app = ids::app_id(key().verifying_key().as_bytes());
+    let before = registry.audit_page(&app, None)?.events.len();
+    assert!(registry.review(&second, "approve", "").is_err());
+    assert!(registry.queue()?.iter().all(|r| r.review == "pending"));
+    assert_eq!(registry.audit_page(&app, None)?.events.len(), before);
+    db.execute_batch("DROP TRIGGER fail_rejection;")?;
+    std::fs::remove_dir_all(dir.path().join("catalog"))?;
+    std::fs::write(dir.path().join("catalog"), "blocked")?;
+    assert!(registry.review(&second, "approve", "").is_err());
+    let reopened = Registry::new(dir.path().to_owned())?;
+    let queue = reopened.queue()?;
+    assert_eq!(
+        queue
+            .iter()
+            .find(|r| r.app.package_id == first)
+            .unwrap()
+            .review,
+        "needsUpdate"
+    );
+    assert_eq!(
+        queue
+            .iter()
+            .find(|r| r.app.package_id == second)
+            .unwrap()
+            .review,
+        "approved"
+    );
+    std::fs::remove_file(dir.path().join("catalog"))?;
+    reopened.review(&second, "approve", "")?;
+    assert!(dir.path().join("www/packages").join(&second).exists());
+    assert!(!dir.path().join("www/packages").join(&first).exists());
+    assert_eq!(
+        reopened
+            .audit_page(&app, None)?
+            .events
+            .iter()
+            .filter(|e| e.action == "rejected")
+            .count(),
+        1
+    );
+    Ok(())
+}
+
+#[test]
 fn registry_lifecycle_and_restart() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let registry = Registry::new(dir.path().to_owned())?;

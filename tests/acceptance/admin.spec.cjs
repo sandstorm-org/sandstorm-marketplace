@@ -103,6 +103,29 @@ test('review, publish, history, rollback, rejection, and restoring latest', asyn
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Version history' })).toBeVisible();
 });
+test('approval rejects earlier pending builds and leaves later submissions unchanged', async ({ page, request }) => {
+  const rows = await queue(request);
+  const older = rows.find(row => row.app.versionNumber === 2);
+  const selected = rows.find(row => row.app.versionNumber === 3);
+  const later = rows.find(row => row.app.versionNumber === 4);
+  expect((await request.post(`/admin/unapprove/${older.app.packageId}`)).ok()).toBeTruthy();
+  await page.goto(`/admin/${selected.app.appId}/`);
+  await release(page, 3).getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(page.locator('#decision-description')).toContainText('lower build numbers received before this release');
+  await page.locator('#decision-submit').click();
+  await expect(page.locator('#decision')).not.toBeVisible();
+  await expect(release(page, 2)).toContainText('Automatically rejected');
+  const after = await queue(request);
+  expect(after.find(row => row.app.packageId === older.app.packageId).review).toBe('needsUpdate');
+  expect(after.find(row => row.app.packageId === selected.app.packageId).review).toBe('approved');
+  const unchanged = after.find(row => row.app.packageId === later.app.packageId);
+  expect(unchanged.review).toBe(later.review);
+  expect(unchanged.requestState).toBe(later.requestState);
+  expect(unchanged.reason).toBe(later.reason);
+  expect(after.find(row => row.app.versionNumber === 1).review).toBe('approved');
+  expect(await publicVersion(request)).toBe(3);
+});
+
 test('reviewers download embargoed packages but cannot approve or expose them publicly', async ({ page, request }) => {
   const rows = await queue(request);
   const privateRelease = rows.find(row => row.app.versionNumber === 4);

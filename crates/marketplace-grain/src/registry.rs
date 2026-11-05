@@ -505,7 +505,14 @@ impl Registry {
         };
         let mut bytes = Vec::new();
         serialize::write_message(&mut bytes, &message)?;
-        self.audit_commit(vec![Change::Status(id.into(), bytes)], events)?;
+        let mut changes = vec![Change::Status(id.into(), bytes)];
+        if action == "approved" && previous != next {
+            changes.push(Change::RejectEarlierPending {
+                approved_id: id.into(),
+                actor: self.actor.clone(),
+            });
+        }
+        self.audit_commit(changes, events)?;
         Ok(())
     }
     // A pin only applies while its release is approved and the author permits publication.
