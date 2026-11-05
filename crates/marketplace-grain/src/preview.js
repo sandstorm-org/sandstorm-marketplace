@@ -9,6 +9,8 @@ const dialog = document.getElementById("install-dialog");
 const error = document.getElementById("install-error");
 install.onclick = () => {
   error.hidden = true;
+  document.getElementById("install-server").value =
+    preferredServer(new URLSearchParams(location.search).get("host")) || "";
   dialog.showModal();
   document.getElementById("install-server").focus();
 };
@@ -44,6 +46,7 @@ document.getElementById("install-form").onsubmit = async (event) => {
     }
     if (!destination)
       throw new Error("Allow popups to open your Sandstorm server.");
+    rememberServer(server);
     destination.location = url;
     dialog.close();
   } catch (err) {

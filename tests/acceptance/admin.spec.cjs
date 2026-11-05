@@ -156,7 +156,7 @@ test('reviewers download embargoed packages but cannot approve or expose them pu
   await release(page, 2).getByRole('link', { name: 'Preview listing' }).click();
   await page.getByRole('status').filter({ hasText: 'Build 2' }).waitFor();
   await page.getByRole('button', { name: 'Install for testing' }).click();
-  await page.getByLabel('Your Sandstorm server URL').fill('http://127.0.0.1:9940');
+  await expect(page.getByLabel('Your Sandstorm server URL')).toHaveValue('http://127.0.0.1:9940');
   const popup = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Open installer' }).click();
   const installer = await popup;
