@@ -303,7 +303,10 @@ if (typeof document !== "undefined") {
     };
     $("decision-title").textContent = `${labels[action]}: ${item.app.name}`;
     $("decision-description").textContent =
-      `${versionName(item)}. ${explanations[action]}`;
+      `${versionName(item)}. ${explanations[action]}` +
+      (action === "approve"
+        ? " Pending versions of this app with lower build numbers received before this release will be automatically rejected. Later submissions and releases without a known receipt order stay unchanged."
+        : "");
     $("reason-label").hidden = action !== "reject";
     $("decision-reason").required = action === "reject";
     $("decision-reason").value = "";

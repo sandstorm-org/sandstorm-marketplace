@@ -1,6 +1,6 @@
 //! Authoritative metadata storage. SPKs and generated publications remain files.
 use crate::{
-    audit::{Event, Page},
+    audit::{Actor, Event, Page},
     ids, package_capnp as p,
     registry::{Message, PublicVisibility},
     submit_capnp as s,
@@ -21,6 +21,10 @@ pub(crate) enum Change {
         ever_approved: bool,
     },
     Status(String, Vec<u8>),
+    RejectEarlierPending {
+        approved_id: String,
+        actor: Actor,
+    },
     Pin(String, String),
     Deprecations(BTreeMap<String, Deprecation>),
     Visibility(String, PublicVisibility),
@@ -253,6 +257,9 @@ pub(crate) fn apply(db: &Connection, change: Change) -> Result<()> {
             };
             ensure!(db.execute("UPDATE releases SET request_state=?,review_state=?,review_reason=?,first_published_at=?,next_sequence_number=?,ever_approved=ever_approved OR ? WHERE package_id=?",params![u16::from(status.get_request_state()?),review,reason,status.get_publish_date(),status.get_next_sequence_number().to_be_bytes().as_slice(),review=="approved" || status.get_publish_date()!=0,id])? == 1,"unknown package");
         }
+        Change::RejectEarlierPending { approved_id, actor } => {
+            reject_earlier_pending(db, &approved_id, actor)?;
+        }
         Change::Pin(app, id) => {
             db.execute(
                 "UPDATE apps SET pinned_package_id=? WHERE app_id=?",
@@ -285,6 +292,68 @@ pub(crate) fn apply(db: &Connection, change: Change) -> Result<()> {
             )?;
         }
     }
+    Ok(())
+}
+// Runs in the same transaction as approval and its audit event.
+fn reject_earlier_pending(db: &Connection, approved_id: &str, actor: Actor) -> Result<()> {
+    let (app, version, received): (String, u32, Option<String>) = db.query_row(
+        "SELECT app_id,build_number,received_at FROM releases WHERE package_id=?",
+        [approved_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let Some(cutoff) = received
+        .as_deref()
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+    else {
+        return Ok(());
+    };
+    let mut statement = db.prepare(
+        "SELECT package_id,build_number,received_at,request_state,review_reason FROM releases
+         WHERE app_id=? AND build_number<? AND review_state='pending' AND request_state IN (1,2)
+         ORDER BY package_id",
+    )?;
+    let candidates = statement
+        .query_map(params![app, version], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, u32>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, u16>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let reason = format!(
+        "Automatically rejected because subsequently submitted build {version} ({approved_id}) was approved."
+    );
+    let mut events = Vec::new();
+    for (id, build, received, request, previous_reason) in candidates {
+        let Some(received) = received
+            .as_deref()
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        else {
+            continue;
+        };
+        if received >= cutoff {
+            continue;
+        }
+        let request = match s::SubmissionState::try_from(request)? {
+            s::SubmissionState::Review => "review",
+            s::SubmissionState::Publish => "publish",
+            s::SubmissionState::Ignore => continue,
+        };
+        db.execute(
+            "UPDATE releases SET review_state='needsUpdate',review_reason=? WHERE package_id=?",
+            params![reason, id],
+        )?;
+        events.push(Event::new(&app, Some((&id, build)), "rejected", actor.clone(),
+            serde_json::json!({
+                "previous": {"requestState": request, "review": "pending", "reason": previous_reason},
+                "next": {"requestState": request, "review": "needsUpdate", "reason": reason},
+                "automatic": true, "approvedPackageId": approved_id,
+            })));
+    }
+    append_events(db, events)?;
     Ok(())
 }
 pub(crate) fn insert_event(db: &Connection, event: &Event) -> Result<()> {

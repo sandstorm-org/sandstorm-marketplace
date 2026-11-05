@@ -199,6 +199,13 @@ Open **Preview listing** to inspect a release, then **Approve**,
 publication effect before confirmation. Rejection requires a reason, which the
 author can retrieve through submission status; no email is sent. Approving an
 embargoed release keeps it private until the author requests publication.
+Approving a release also rejects pending versions of the same app received earlier
+with lower build numbers that are awaiting review or publication. The automatic
+rejection reason identifies the approved release. Later submissions, equal or
+missing receipt timestamps, withdrawn releases, and existing review decisions
+remain unchanged. Both receipt time and build number must be earlier. Approval
+and these rejections are saved atomically with their audit events before publishing;
+retrying an existing approval does not reject additional releases.
 Reviewers have read-only access; owners and approvers can make changes.
 
 Click an app name or release count to open its detail page with app information
