@@ -218,9 +218,10 @@ publication effect before confirmation. Rejection requires a reason, which the
 author can retrieve through submission status; no email is sent. Approving an
 embargoed release keeps it private until the author requests publication.
 Approving a release also rejects pending versions of the same app received earlier
-with lower build numbers that are awaiting review or publication. The automatic
+with lower build numbers, including withdrawn releases whose review is still
+pending. Withdrawal is preserved; automatic rejection does not request publication. The automatic
 rejection reason identifies the approved release. Later submissions, equal or
-missing receipt timestamps, withdrawn releases, and existing review decisions
+missing receipt timestamps, and existing review decisions
 remain unchanged. Both receipt time and build number must be earlier. Approval
 and these rejections are saved atomically with their audit events before publishing;
 retrying an existing approval does not reject additional releases.

@@ -313,7 +313,7 @@ fn reject_earlier_pending(db: &Connection, approved_id: &str, actor: Actor) -> R
     };
     let mut statement = db.prepare(
         "SELECT package_id,build_number,received_at,request_state,review_reason FROM releases
-         WHERE app_id=? AND build_number<? AND review_state='pending' AND request_state IN (1,2)
+         WHERE app_id=? AND build_number<? AND review_state='pending'
          ORDER BY package_id",
     )?;
     let candidates = statement
@@ -344,7 +344,7 @@ fn reject_earlier_pending(db: &Connection, approved_id: &str, actor: Actor) -> R
         let request = match s::SubmissionState::try_from(request)? {
             s::SubmissionState::Review => "review",
             s::SubmissionState::Publish => "publish",
-            s::SubmissionState::Ignore => continue,
+            s::SubmissionState::Ignore => "ignore",
         };
         db.execute(
             "UPDATE releases SET review_state='needsUpdate',review_reason=? WHERE package_id=?",

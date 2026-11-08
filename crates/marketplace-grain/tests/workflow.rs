@@ -45,6 +45,9 @@ fn approval_rejects_only_pending_releases_with_earlier_receipts_and_builds() -> 
             ))?;
         }
     }
+    // Build 3 was submitted and then withdrawn before the newer release arrived.
+    registry.submission(&request(&releases[2], Some(s::SubmissionState::Publish), 1))?;
+    registry.submission(&request(&releases[2], Some(s::SubmissionState::Ignore), 2))?;
     registry.review(&releases[0], "approve", "")?;
     registry.review(&releases[1], "reject", "Existing rejection")?;
     let other_key = ed25519_dalek::SigningKey::from_bytes(&[43; 32]);
@@ -55,7 +58,7 @@ fn approval_rejects_only_pending_releases_with_earlier_receipts_and_builds() -> 
         "UPDATE releases SET received_at='2026-01-01T00:00:00Z',request_state=2 WHERE package_id=?",
         [&other],
     )?;
-    let unchanged: Vec<_> = [0, 1, 2, 5, 6, 7, 9, 10]
+    let unchanged: Vec<_> = [0, 1, 5, 6, 7, 9, 10]
         .into_iter()
         .map(|i| {
             (
@@ -75,7 +78,7 @@ fn approval_rejects_only_pending_releases_with_earlier_receipts_and_builds() -> 
     registry
         .with_actor(actor.clone())
         .review(&releases[8], "approve", "")?;
-    for index in [3, 4] {
+    for index in [2, 3, 4] {
         let response = registry.submission(&request(&releases[index], None, 0))?;
         let message =
             capnp::serialize_packed::read_message(&mut &response[1..], Default::default())?;
@@ -84,7 +87,13 @@ fn approval_rejects_only_pending_releases_with_earlier_receipts_and_builds() -> 
             panic!("expected automatic rejection")
         };
         assert!(reason?.to_str()?.contains(&releases[8]));
-        assert_eq!(status.get_next_sequence_number(), 2);
+        assert_eq!(
+            status.get_next_sequence_number(),
+            if index == 2 { 3 } else { 2 }
+        );
+        if index == 2 {
+            assert_eq!(status.get_request_state()?, s::SubmissionState::Ignore);
+        }
         assert!(
             !dir.path()
                 .join("www/packages")
@@ -110,13 +119,25 @@ fn approval_rejects_only_pending_releases_with_earlier_receipts_and_builds() -> 
         .iter()
         .filter(|e| e.details["automatic"] == true)
         .collect();
-    assert_eq!(automatic.len(), 2);
+    assert_eq!(automatic.len(), 3);
     for event in automatic {
         assert_eq!(event.action, "rejected");
         assert_eq!(event.actor, actor);
         assert_eq!(event.details["approvedPackageId"], releases[8]);
+        if event.package_id.as_deref() == Some(releases[2].as_str()) {
+            assert_eq!(event.details["previous"]["requestState"], "ignore");
+            assert_eq!(event.details["next"]["requestState"], "ignore");
+        }
     }
     let reopened = Registry::new(dir.path().to_owned())?;
+    let withdrawn = reopened
+        .queue()?
+        .into_iter()
+        .find(|r| r.app.package_id == releases[2])
+        .unwrap();
+    assert_eq!(withdrawn.review, "needsUpdate");
+    assert_eq!(withdrawn.request_state, "ignore");
+    assert!(!withdrawn.public_download && !withdrawn.current);
     // An approval retry must not re-reject a release explicitly returned to review.
     reopened.review(&releases[3], "unapprove", "")?;
     let before = reopened.audit_page(&app, None)?.events.len();
@@ -144,6 +165,7 @@ fn automatic_rejections_are_atomic_with_approval_and_survive_publication_failure
     for id in [&first, &second] {
         registry.submission(&request(id, Some(s::SubmissionState::Publish), 1))?;
     }
+    registry.submission(&request(&first, Some(s::SubmissionState::Ignore), 2))?;
     let db = rusqlite::Connection::open(dir.path().join("marketplace.sqlite"))?;
     db.execute(
         "UPDATE releases SET received_at='2026-01-01T00:00:00Z' WHERE package_id=?",
