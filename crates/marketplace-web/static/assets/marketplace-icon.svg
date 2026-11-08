@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>Sandstorm Marketplace — a shelf of apps</title>
+  <defs>
+    <linearGradient id="frame" x2="0" y2="1">
+      <stop stop-color="#79499b"/>
+      <stop offset="1" stop-color="#522f79"/>
+    </linearGradient>
+    <linearGradient id="wood" x2="0" y2="1">
+      <stop stop-color="#efbd76"/>
+      <stop offset="1" stop-color="#d69850"/>
+    </linearGradient>
+  </defs>
+  <!-- Square cabinet with a recessed interior and two wooden shelves. -->
+  <path fill="#522f79" d="M20 110h12v10H20zm76 0h12v10H96z"/>
+  <rect x="8" y="6" width="112" height="110" fill="url(#frame)"/>
+  <rect x="17" y="15" width="94" height="92" fill="#352044"/>
+  <path fill="#24172f" opacity=".35" d="M17 61h94v7H17zm0 39h94v7H17z"/>
+  <rect x="17" y="56" width="94" height="7" rx="2" fill="url(#wood)"/>
+  <rect x="17" y="100" width="94" height="7" rx="2" fill="url(#wood)"/>
+  <!-- Front-facing software boxes, with generous spacing and bold symbols. -->
+  <rect x="23" y="23" width="24" height="33" rx="4" fill="#b68bd9"/>
+  <rect x="52" y="23" width="24" height="33" rx="4" fill="#59aaa3"/>
+  <rect x="81" y="23" width="24" height="33" rx="4" fill="#edb440"/>
+  <rect x="32" y="70" width="28" height="30" rx="4" fill="#e58070"/>
+  <rect x="68" y="70" width="28" height="30" rx="4" fill="#9093d0"/>
+  <!-- Document. -->
+  <path fill="#fff9ed" d="M30 30h7l5 5v14H30z"/>
+  <path fill="#b68bd9" d="M37 30v6h5z"/>
+  <path stroke="#b68bd9" stroke-width="2" stroke-linecap="round" d="M33 40h6m-6 4h4"/>
+  <!-- Conversation. -->
+  <path fill="#fff9ed" d="M64 31c-6 0-9 3-9 7 0 3 2 5 5 6l-2 5 7-4c5 0 8-3 8-7s-3-7-9-7z"/>
+  <g fill="#59aaa3">
+    <circle cx="60" cy="38" r="1.3"/>
+    <circle cx="64" cy="38" r="1.3"/>
+    <circle cx="68" cy="38" r="1.3"/>
+  </g>
+  <!-- Calendar. -->
+  <rect x="85" y="33" width="16" height="16" rx="2" fill="#fff9ed"/>
+  <path stroke="#fff9ed" stroke-width="2.5" stroke-linecap="round" d="M89 30v5m8-5v5"/>
+  <path fill="#edb440" d="M88 39h4v3h-4zm6 0h4v3h-4zm-6 5h4v3h-4zm6 0h4v3h-4z"/>
+  <!-- Paintbrush. -->
+  <path fill="#fff9ed" d="M42 85l10-10c2-2 5 1 3 3L45 89zm-2 2c5-1 7 5 3 7-2 1-5 0-7 1 2-2 1-6 4-8z"/>
+  <!-- Code. -->
+  <path fill="none" stroke="#fff9ed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M76 81l-4 4 4 4m12-8 4 4-4 4m-4-11-4 14"/>
+</svg>

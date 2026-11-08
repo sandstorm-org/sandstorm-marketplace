@@ -102,8 +102,9 @@ compression, and verification. Compression uses up to four CPU workers with
 optimized even in development builds; parallel blocks may slightly increase SPK
 size compared with a single block.
 
-The default contact address is a placeholder for local development. Set a real
-address before distributing the package. Increment `APP_VERSION` and update
+The default contact address is `michael@nutt.im`; forks should supply their own
+address. Author proof setup and screenshot provenance are documented in
+[`packaging/README.md`](packaging/README.md). Increment `APP_VERSION` and update
 `MARKETING_VERSION` in `xtask/src/package.rs` for releases, or supply explicit
 `--app-version` and `--marketing-version` values to `cargo xtask package`.
 

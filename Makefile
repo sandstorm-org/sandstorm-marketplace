@@ -1,5 +1,5 @@
 SANDSTORM_SPK ?= $(HOME)/src/sandstorm/build/dev/bin/spk
-CONTACT_EMAIL ?= maintainer@example.invalid
+CONTACT_EMAIL ?= michael@nutt.im
 
 .PHONY: build package prepare-dev test test-package test-interop test-acceptance
 prepare-dev:

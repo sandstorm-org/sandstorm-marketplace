@@ -19,7 +19,7 @@ enum Task {
     PrepareDev,
     /// Build, stage, and sign the marketplace SPK using Rust.
     Package {
-        #[arg(long, default_value = "maintainer@example.invalid")]
+        #[arg(long, default_value = package::CONTACT_EMAIL)]
         contact_email: String,
         #[arg(long)]
         debug: bool,

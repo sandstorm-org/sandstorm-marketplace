@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.8 — 2026-11-08
+
+- Add icon for the installed app and marketplace listing.
+- Use the modern "marketplace" noun phrase for creating new grains.
+- Add project links, embedded release notes, public marketplace and administration
+  screenshots, and visual asset attribution notices to package metadata.
+- Set the maintainer contact to michael@nutt.im and support embedding a PGP
+  author proof for the existing app ID.
+
 ## 0.4.7 — 2026-11-05
 
 - Remember Sandstorm servers across marketplace visits, with a chooser to switch

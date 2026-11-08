@@ -14,8 +14,10 @@ use std::{
 };
 
 pub const APP_ID: &str = "3theazdrcs30r9qysmh6ks0vndm3z4xkuk6k9qmu506h7mamvqg0";
-pub const APP_VERSION: u32 = 13;
-pub const MARKETING_VERSION: &str = "0.4.7";
+pub const APP_VERSION: u32 = 15;
+pub const MARKETING_VERSION: &str = "0.4.8";
+pub const CONTACT_EMAIL: &str = "michael@nutt.im";
+const PROJECT_URL: &str = "https://github.com/sandstorm-org/sandstorm-marketplace";
 
 pub struct Release {
     pub test_key: bool,
@@ -96,8 +98,8 @@ fn manifest(email: &str, release: &Release) -> Result<Vec<u8>> {
     let mut action = m.reborrow().init_actions(1).get(0);
     action
         .reborrow()
-        .init_title()
-        .set_default_text("New marketplace");
+        .init_noun_phrase()
+        .set_default_text("marketplace");
     let mut argv = action.init_command().init_argv(2);
     argv.set(0, "/marketplace-grain");
     argv.set(1, "--init");
@@ -106,14 +108,65 @@ fn manifest(email: &str, release: &Release) -> Result<Vec<u8>> {
         .init_argv(1)
         .set(0, "/marketplace-grain");
     let mut metadata = m.init_metadata();
+    metadata
+        .reborrow()
+        .init_icons()
+        .init_app_grid()
+        .set_svg(include_str!(
+            "../../crates/marketplace-web/static/assets/marketplace-icon.svg"
+        ));
     metadata.reborrow().init_author().set_contact_email(email);
+    metadata.set_website(PROJECT_URL);
+    metadata.set_code_url(PROJECT_URL);
+    metadata
+        .reborrow()
+        .init_change_log()
+        .set_default_text(include_str!("../../CHANGELOG.md"));
+    metadata.reborrow().init_license().init_notices().set_default_text(concat!(
+        "Sandstorm visual assets (logo, banner, favicon) are from sandstorm-app-market, under Apache License 2.0.\n",
+        "Source: https://github.com/sandstorm-io/sandstorm-app-market\n\n",
+        include_str!("../../crates/marketplace-web/static/assets/Sandstorm-LICENSE.txt"),
+        "\n\nSource Sans Pro font notices and license:\n\n",
+        include_str!("../../crates/marketplace-web/static/assets/SourceSans-LICENSE.txt")
+    ));
+    let mut screenshots = metadata.reborrow().init_screenshots(2);
+    for (index, png) in [
+        include_bytes!("../../packaging/screenshots/public-marketplace.png").as_slice(),
+        include_bytes!("../../packaging/screenshots/marketplace-admin.png").as_slice(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut screenshot = screenshots.reborrow().get(index as u32);
+        screenshot.set_width(1440);
+        screenshot.set_height(1000);
+        screenshot.set_png(png);
+    }
+    if !release.test_key {
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packaging");
+        let signature = directory.join("author.pgp");
+        let keyring = directory.join("author-keyring.gpg");
+        ensure!(
+            signature.exists() == keyring.exists(),
+            "author proof needs both packaging/author.pgp and packaging/author-keyring.gpg; see packaging/README.md"
+        );
+        if signature.exists() {
+            metadata
+                .reborrow()
+                .get_author()
+                .set_pgp_signature(&fs::read(signature)?);
+            metadata.set_pgp_keyring(&fs::read(keyring)?);
+        } else {
+            eprintln!("Author proof not yet configured; see packaging/README.md");
+        }
+    }
     metadata
         .reborrow()
         .init_categories(1)
         .set(0, p::Category::DeveloperTools);
     metadata
         .reborrow()
-        .init_license()
+        .get_license()
         .set_open_source(p::OpenSourceLicense::Apache2);
     metadata
         .reborrow()
@@ -235,12 +288,7 @@ fn install_stage(root: &Path, staged: tempfile::TempDir) -> Result<()> {
 }
 
 pub fn prepare_dev(root: &Path) -> Result<()> {
-    let staged = stage(
-        root,
-        "maintainer@example.invalid",
-        true,
-        &Release::default(),
-    )?;
+    let staged = stage(root, CONTACT_EMAIL, true, &Release::default())?;
     install_stage(root, staged)?;
     println!("Ready. Run: spk dev -I crates/marketplace-grain/schema");
     Ok(())
@@ -405,8 +453,63 @@ mod tests {
             "production key changed"
         );
         let bytes = manifest("ci@example.invalid", &release)?;
-        let message = serialize::read_message(&mut bytes.as_slice(), spk::limits(4096))?;
+        let message = serialize::read_message(
+            &mut bytes.as_slice(),
+            spk::limits(p::manifest::SIZE_LIMIT_IN_WORDS as usize),
+        )?;
         let manifest = message.get_root::<p::manifest::Reader>()?;
+        let metadata = manifest.get_metadata()?;
+        assert_eq!(
+            manifest
+                .get_actions()?
+                .get(0)
+                .get_noun_phrase()?
+                .get_default_text()?
+                .to_str()?,
+            "marketplace"
+        );
+        assert_eq!(
+            metadata.get_author().get_contact_email()?.to_str()?,
+            "ci@example.invalid"
+        );
+        assert!(!metadata.get_author().has_pgp_signature());
+        assert_eq!(metadata.get_code_url()?.to_str()?, PROJECT_URL);
+        assert_eq!(metadata.get_website()?.to_str()?, PROJECT_URL);
+        assert!(
+            metadata
+                .get_change_log()?
+                .get_default_text()?
+                .to_str()?
+                .contains("## 0.4.8")
+        );
+        let notices = metadata
+            .get_license()
+            .get_notices()?
+            .get_default_text()?
+            .to_str()?;
+        assert!(notices.contains("SIL OPEN FONT LICENSE"));
+        assert!(notices.contains("Apache License"));
+        assert!(matches!(
+            metadata.get_license().which()?,
+            p::metadata::license::OpenSource(Ok(p::OpenSourceLicense::Apache2))
+        ));
+        let screenshots = metadata.get_screenshots()?;
+        assert_eq!(screenshots.len(), 2);
+        for screenshot in screenshots {
+            let p::metadata::screenshot::Png(png) = screenshot.which()? else {
+                panic!("expected PNG screenshot")
+            };
+            let png = png?;
+            assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+            assert_eq!(
+                screenshot.get_width(),
+                u32::from_be_bytes(png[16..20].try_into()?)
+            );
+            assert_eq!(
+                screenshot.get_height(),
+                u32::from_be_bytes(png[20..24].try_into()?)
+            );
+        }
         ensure!(
             manifest.get_app_version() == 123,
             "version override ignored"
