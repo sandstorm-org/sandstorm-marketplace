@@ -14,8 +14,8 @@ use std::{
 };
 
 pub const APP_ID: &str = "3theazdrcs30r9qysmh6ks0vndm3z4xkuk6k9qmu506h7mamvqg0";
-pub const APP_VERSION: u32 = 19;
-pub const MARKETING_VERSION: &str = "0.5.0";
+pub const APP_VERSION: u32 = 22;
+pub const MARKETING_VERSION: &str = "0.5.1";
 pub const CONTACT_EMAIL: &str = "michael@nutt.im";
 const PROJECT_URL: &str = "https://github.com/sandstorm-org/sandstorm-marketplace";
 

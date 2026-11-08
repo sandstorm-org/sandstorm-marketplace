@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 — Unreleased
+
+- Automatically reject earlier, lower-build pending releases when a newer release
+  is approved, including withdrawn releases. Preserve the author's withdrawal.
+- Default the header color to charcoal (#222222), preserving saved colors.
+- Give the color picker explicit dimensions and add an editable, synchronized
+  hex field that displays the current color, validates input, and resets with
+  Use defaults.
+- Show a centered spinner until the initial administration response arrives,
+  preventing a premature read-only access message. Failed initial requests
+  display an error with a Try again button.
+
 ## 0.5.0 — 2026-11-08
 
 - Clarify the appearance changes on upgrade: the title defaults to "App Market"

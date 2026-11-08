@@ -107,6 +107,9 @@ address. Author proof setup and screenshot provenance are documented in
 [`packaging/README.md`](packaging/README.md). Increment `APP_VERSION` and update
 `MARKETING_VERSION` in `xtask/src/package.rs` for releases, or supply explicit
 `--app-version` and `--marketing-version` values to `cargo xtask package`.
+Keep unpublished changes under the same upcoming marketing version and changelog
+entry; local test builds do not require a patch-version bump. Increment the
+internal `APP_VERSION` when a new local package must upgrade an installed build.
 
 ## Use in Sandstorm
 
