@@ -4,6 +4,11 @@
 <link rel="stylesheet" href="review.css">
 <link rel="icon" href="assets/favicon.png" type="image/png">
 </head><body>
+<div id="initial-state">
+<div id="initial-loading" role="status"><span class="initial-spinner" aria-hidden="true"></span><p>Loading marketplace…</p></div>
+<div id="initial-error" hidden><p id="initial-error-message" role="alert"></p><button id="initial-retry" type="button">Try again</button></div>
+</div>
+<div id="admin-ui" hidden>
 <header class="masthead">
 <a class="site-title" href="./" data-admin-navigation><img src="assets/sandstorm-logo.svg" width="48" height="48" alt=""><span id="marketplace-title">App Market Administration</span></a>
 <nav class="admin-tabs" aria-label="Administration">
@@ -101,4 +106,4 @@
 </form></dialog>
 <dialog id="decision"><form id="decision-form"><h2 id="decision-title"></h2><p id="decision-description"></p><label id="reason-label" for="decision-reason" hidden>Reason for the author<textarea id="decision-reason" maxlength="8000" placeholder="Describe what needs to change before this release can be published."></textarea></label><p id="decision-error" class="reason" role="alert" hidden></p><div class="actions"><button id="decision-cancel" type="button">Cancel</button><button id="decision-submit" class="primary">Confirm</button></div></form></dialog>
 <dialog id="audit-details" aria-labelledby="audit-details-title"><div class="audit-details-header"><h2 id="audit-details-title">Event details</h2><button id="audit-details-close" type="button" autofocus>Close</button></div><pre id="audit-details-json" tabindex="0" aria-label="Event JSON"></pre></dialog>
-<script src="review.js"></script></main></body></html>
+</main></div><script src="review.js"></script></body></html>

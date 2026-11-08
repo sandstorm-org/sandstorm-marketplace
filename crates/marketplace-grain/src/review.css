@@ -1,5 +1,11 @@
 /* Marketplace branding, fonts, and base colors come from assets/marketplace.css. */
 :root { accent-color: var(--accent); }
+#initial-state { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 2rem; text-align: center; box-sizing: border-box; font-family: system-ui, sans-serif; }
+#initial-state[hidden] { display: none; }
+#initial-error { max-width: 36rem; overflow-wrap: anywhere; }
+.initial-spinner { display: block; width: 2.5rem; height: 2.5rem; margin: 0 auto 1rem; border: .2rem solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: initial-spin .8s linear infinite; }
+@keyframes initial-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .initial-spinner { animation: none; } }
 main { max-width: 100rem; padding: 2.5rem clamp(1rem, 4vw, 4rem) 4rem; }
 h2, h3, p { margin: 0 0 .75rem; }
 h2 { font-size: 1.5rem; font-weight: 300; color: var(--accent); }

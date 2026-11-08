@@ -149,6 +149,7 @@ if (typeof document !== "undefined") {
   let items = [],
     page = 0,
     canApprove = false,
+    hasSnapshot = false,
     serverBusy = false,
     working = false,
     refreshing = false,
@@ -243,7 +244,7 @@ if (typeof document !== "undefined") {
     $("refresh-keybase-authors").disabled = working || serverBusy || !keybaseConnected;
     notice(
       "access-note",
-      !canApprove
+      !hasSnapshot ? "" : !canApprove
         ? "Read-only reviewer access. An approver can change review decisions and public versions."
         : serverBusy
           ? "A marketplace operation is in progress. Review actions will be available when it finishes."
@@ -796,6 +797,7 @@ if (typeof document !== "undefined") {
     }
   }
   function render() {
+    if (!hasSnapshot) return;
     const groups = publishedApps(items);
     const showingApp = !!currentAppId();
     const tab = currentTab();
@@ -837,6 +839,10 @@ if (typeof document !== "undefined") {
   async function refresh() {
     if (refreshing) return;
     refreshing = true;
+    if (!hasSnapshot) {
+      $("initial-loading").hidden = false;
+      $("initial-error").hidden = true;
+    }
     updateControls();
     try {
       const snapshot = await json("admin");
@@ -889,7 +895,18 @@ if (typeof document !== "undefined") {
         $("notifications-retry").hidden = !notifications.pending;
         notificationSending = notifications.sending;
       }
+      hasSnapshot = true;
       render();
+      $("admin-ui").hidden = false;
+      $("initial-state").hidden = true;
+    } catch (error) {
+      if ($("admin-ui").hidden) {
+        hasSnapshot = false;
+        $("initial-loading").hidden = true;
+        $("initial-error-message").textContent = error.message;
+        $("initial-error").hidden = false;
+      }
+      throw error;
     } finally {
       refreshing = false;
       updateControls();
@@ -1342,7 +1359,8 @@ if (typeof document !== "undefined") {
       }
     });
   };
-  refresh().catch((err) => notice("error", err.message));
+  $("initial-retry").onclick = () => refresh().catch(() => {});
+  refresh().catch(() => {}); // Initial failures are displayed with a retry action.
   json("public-id")
     .then((info) => {
       const url = new URL(info.autoUrl);

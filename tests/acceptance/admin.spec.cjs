@@ -17,6 +17,42 @@ function release(page, version) {
 test.beforeEach(async ({ request }) => {
   expect((await request.post('/__test/reset')).ok()).toBeTruthy();
 });
+for (const role of ['admin', 'reviewer']) {
+  test(`initial ${role} load waits for permissions behind a centered spinner`, async ({ page }) => {
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    await page.route(`**/${role}/admin`, async route => { await pending; await route.continue(); });
+    await page.goto(`/${role}/`, {waitUntil:'domcontentloaded'});
+    await expect(page.locator('#initial-loading')).toBeVisible();
+    await expect(page.locator('#admin-ui')).toBeHidden();
+    // Public publishing details can arrive first and must not reveal a guessed role.
+    await expect(page.locator('#public-url')).toHaveAttribute('href', /\/public\//);
+    await expect(page.locator('#access-note')).toBeHidden();
+    const bounds = await page.locator('#initial-loading').boundingBox();
+    const viewport = page.viewportSize();
+    expect(Math.abs(bounds.x + bounds.width / 2 - viewport.width / 2)).toBeLessThan(2);
+    expect(Math.abs(bounds.y + bounds.height / 2 - viewport.height / 2)).toBeLessThan(2);
+    release();
+    await expect(page.locator('#initial-state')).toBeHidden();
+    await expect(page.locator('#queue')).toContainText('Rust test app');
+    if (role === 'reviewer') await expect(page.locator('#access-note')).toContainText('Read-only reviewer access');
+    else await expect(page.locator('#access-note')).toBeHidden();
+  });
+}
+test('initial denial replaces the spinner with an error and permits retry', async ({ page }) => {
+  let denied = true;
+  await page.route('**/admin/admin', route => denied
+    ? route.fulfill({status:403,contentType:'text/plain',body:'Access denied'}) : route.continue());
+  await page.goto('/admin/');
+  await expect(page.locator('#initial-loading')).toBeHidden();
+  await expect(page.locator('#initial-error-message')).toHaveText('Access denied');
+  await expect(page.locator('#admin-ui')).toBeHidden();
+  denied = false;
+  await page.getByRole('button', {name:'Try again',exact:true}).click();
+  await expect(page.locator('#initial-state')).toBeHidden();
+  await expect(page.locator('#queue')).toContainText('Rust test app');
+  await expect(page.locator('#error')).toBeHidden();
+});
 test('subheader defaults off and toggles both messages persistently', async ({ page }) => {
   const banner = page.locator('#welcome');
   const intro = page.locator('.intro');
