@@ -110,6 +110,21 @@ address. Author proof setup and screenshot provenance are documented in
 
 ## Use in Sandstorm
 
+Each marketplace has independent appearance settings under **Setup → Appearance**.
+The title defaults to **App Market** and is used in the public header, browser
+page titles, listing previews, and the administration header. Choose one header
+color; the gradient and header controls are derived from it, with light or dark
+text selected for readability. The default `#552976` reproduces the original
+purple gradient. **Save appearance** persists the settings and republishes the
+public site. **Use defaults** fills the defaults; save to apply them. Only
+approvers can change appearance. Existing grains receive the defaults on upgrade.
+**Show subheader**, off by default, enables the Sandstorm introduction banner
+and the "Install any of the apps below with just one click" message.
+
+Static catalog sources may include a `branding.json` file with
+`{"title":"App Market","headerColor":"#552976","showSubheader":false}`. The title must be 1–80
+characters and the color must be a six-digit hex value.
+
 1. Install `build/marketplace.spk` and create a marketplace grain.
 2. Open its administration UI. The public marketplace URL is displayed there;
    this also allocates the grain's Web Publishing address.

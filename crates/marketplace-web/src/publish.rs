@@ -106,6 +106,8 @@ fn publish_generation_inner(
 
 fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> {
     let index = LoadedAppIndex::load(source)?;
+    let branding = marketplace_model::branding::Branding::load(source)?;
+    fs::write(stage.join("branding.json"), serde_json::to_vec(&branding)?)?;
     let homepage = marketplace_model::homepage::HomepageOrder::load(source)?;
     fs::write(stage.join("homepage.json"), serde_json::to_vec(&homepage)?)?;
     // Copy only the public catalog, never private metadata or submission state.
@@ -162,7 +164,7 @@ fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> 
             validate_listing(stage, stable, &details, package_base.is_some())?;
             render_app(&index, stable, &details, base, false)?
         } else {
-            unavailable_page("No approved public release")
+            unavailable_page("No approved public release", &branding)?
         };
         let page = if experimental_ids.contains(&app.app_id) {
             let details: AppDetailsForMarket = serde_json::from_slice(&fs::read(
@@ -176,7 +178,10 @@ fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> 
                 render_app(&updates, app, &details, base, true)?,
             )?
         } else {
-            with_experimental(approved_page, unavailable_page("No pending update"))?
+            with_experimental(
+                approved_page,
+                unavailable_page("No pending update", &branding)?,
+            )?
         };
         let directory = stage.join("app").join(&app.app_id);
         fs::create_dir_all(&directory)?;
@@ -260,10 +265,17 @@ fn build(source: &Path, stage: &Path, package_base: Option<&str>) -> Result<()> 
     Ok(())
 }
 
-fn unavailable_page(message: &str) -> String {
-    format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Marketplace</title><link rel=\"stylesheet\" href=\"/assets/marketplace.css\"></head><body><main><h1>{message}</h1><a href=\"/\">Back to all apps</a></main><script src=\"/marketplace.js\" defer></script></body></html>"
-    )
+fn unavailable_page(
+    message: &str,
+    branding: &marketplace_model::branding::Branding,
+) -> Result<String> {
+    #[derive(Template)]
+    #[template(path = "unavailable.html")]
+    struct Unavailable<'a> {
+        message: &'a str,
+        branding: &'a marketplace_model::branding::Branding,
+    }
+    Ok(Unavailable { message, branding }.render()?)
 }
 
 fn author_page(
@@ -309,6 +321,7 @@ fn author_page(
         })
         .unwrap_or(identity);
     Ok(HomeTemplate {
+        branding: marketplace_model::branding::Branding::load(&index.root)?,
         show_welcome: false,
         author_title: Some(format!("Apps by Author — {name}")),
         author_profile,
@@ -359,6 +372,7 @@ fn home(
         }
     }
     Ok(HomeTemplate {
+        branding: marketplace_model::branding::Branding::load(&index.root)?,
         author_title: None,
         author_profile: None,
         unverified_fingerprint: None,
@@ -633,7 +647,7 @@ mod tests {
         assert!(category.contains("<h2 title=\"Etherpad\">"));
         assert!(!category.contains("<h2 title=\"Wekan\">"));
         assert!(category.contains("action=\"/genre/Collaboration\""));
-        assert!(category.contains("id=\"welcome\" hidden"));
+        assert!(!category.contains("id=\"welcome\""));
         assert!(!category.contains("?tag="));
         let app_id = LoadedAppIndex::load(&source)?.index.apps[0].app_id.clone();
         assert!(output.join(format!("app/{app_id}/index.html")).is_file());

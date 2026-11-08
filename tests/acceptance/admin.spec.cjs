@@ -17,6 +17,81 @@ function release(page, version) {
 test.beforeEach(async ({ request }) => {
   expect((await request.post('/__test/reset')).ok()).toBeTruthy();
 });
+test('subheader defaults off and toggles both messages persistently', async ({ page }) => {
+  const banner = page.locator('#welcome');
+  const intro = page.locator('.intro');
+  await page.goto('/public/');
+  await expect(banner).toHaveCount(0);
+  await expect(intro).toHaveCount(0);
+  await page.goto('/admin/setup');
+  await expect(page.getByLabel('Show subheader', {exact:true})).not.toBeChecked();
+  await page.getByLabel('Show subheader', {exact:true}).check();
+  await page.getByRole('button', {name:'Save appearance', exact:true}).click();
+  await expect(page.locator('#appearance-status')).toHaveText('Appearance saved and public site updated.');
+  await page.reload();
+  await expect(page.getByLabel('Show subheader', {exact:true})).toBeChecked();
+  await page.goto('/public/');
+  await expect(banner).toBeVisible();
+  await expect(intro).toBeVisible();
+  await page.goto('/admin/setup');
+  await page.getByLabel('Show subheader', {exact:true}).uncheck();
+  await page.getByRole('button', {name:'Save appearance', exact:true}).click();
+  await expect(page.locator('#appearance-status')).toHaveText('Appearance saved and public site updated.');
+  for (const path of ['/public/', '/public/?q=Rust', '/public/genre/DevTools/', '/public/?experimental=true']) {
+    await page.goto(path);
+    await expect(banner).toHaveCount(0);
+    await expect(intro).toHaveCount(0);
+  }
+});
+test('appearance configures headers, titles, previews and public pages', async ({ page, request }) => {
+  await page.goto('/admin/setup');
+  await expect(page.getByLabel('Marketplace title')).toHaveValue('App Market');
+  await expect(page.getByLabel('Header color')).toHaveValue('#552976');
+  await page.getByLabel('Marketplace title').fill('Community <Apps> & Tools');
+  await page.getByLabel('Header color').fill('#207080');
+  await page.getByRole('button', {name:'Save appearance', exact:true}).click();
+  await expect(page.locator('#appearance-status')).toHaveText('Appearance saved and public site updated.');
+  await expect(page).toHaveTitle('Community <Apps> & Tools · Administration');
+  await expect(page.locator('#marketplace-title')).toHaveText('Community <Apps> & Tools Administration');
+  const gradient = await page.locator('.masthead').evaluate(el => getComputedStyle(el).backgroundImage);
+  expect(gradient).not.toContain('85, 41, 118');
+  await page.reload();
+  await expect(page.getByLabel('Marketplace title')).toHaveValue('Community <Apps> & Tools');
+  const rows = await queue(request);
+  const app = rows.find(row => row.current).app;
+  const preview = await request.get('/admin/preview/' + app.packageId);
+  expect(await preview.text()).toContain('Community &#60;Apps&#62; &#38; Tools');
+  for (const path of ['/public/', '/public/app/' + app.appId + '/', '/public/genre/DevTools/']) {
+    const response = await page.goto(path);
+    expect(response.ok()).toBeTruthy();
+    await expect(page.locator('.site-title')).toHaveText('Community <Apps> & Tools');
+    await expect(page).toHaveTitle(/Community <Apps> & Tools/);
+    expect(await page.locator('.masthead').evaluate(el => getComputedStyle(el).backgroundImage)).toBe(gradient);
+  }
+  await page.goto('/admin/setup');
+  await page.getByRole('button', {name:'Use defaults', exact:true}).click();
+  await page.getByRole('button', {name:'Save appearance', exact:true}).click();
+  await expect(page.locator('#appearance-status')).toHaveText('Appearance saved and public site updated.');
+  await expect(page).toHaveTitle('App Market · Administration');
+});
+
+test('appearance rejects unauthorized, malformed and stale edits', async ({ page, request }) => {
+  const snapshot = await (await request.get('/admin/admin')).json();
+  const data = {revision:snapshot.branding.revision, branding:{title:'Team Market',headerColor:'#ffffff'}};
+  expect((await request.post('/reviewer/branding', {data})).ok()).toBeFalsy();
+  expect((await request.post('/submitter/branding', {data})).ok()).toBeFalsy();
+  for (const branding of [{title:'',headerColor:'#552976'}, {title:'Hello',headerColor:'red; background:url(https://example.com)'}]) {
+    expect((await request.post('/admin/branding', {data:{...data,branding}})).ok()).toBeFalsy();
+  }
+  expect((await request.post('/admin/branding', {data})).ok()).toBeTruthy();
+  expect((await request.post('/admin/branding', {data:{...data,branding:{...data.branding,title:'Stale'}}})).ok()).toBeFalsy();
+  await page.goto('/public/');
+  await expect(page).toHaveTitle('Team Market');
+  expect(await page.locator('.site-title').evaluate(el => getComputedStyle(el).color)).toBe('rgb(0, 0, 0)');
+  await page.goto('/reviewer/');
+  await expect(page.locator('.site-title')).toHaveText('Team Market Administration');
+  await expect(page.getByRole('button', {name:'Save appearance', exact:true})).toBeHidden();
+});
 test('marketplace remembers the server across visits and accepts a new host', async ({ page, context }) => {
   await page.goto('/?host=https://first.example/some/path');
   await expect(page.locator('#server-chooser details')).toBeHidden();
@@ -98,7 +173,7 @@ test('review, publish, history, rollback, rejection, and restoring latest', asyn
   await decide(page, release(page, 3), 'Reject / request update');
   expect(await publicVersion(request)).toBe(2);
   expect((await queue(request)).find(row => row.app.versionNumber === 3).reason).toBe('Please fix the broken import.');
-  await page.getByRole('link', { name: 'Sandstorm App Market' }).click();
+  await page.getByRole('link', { name: 'App Market' }).click();
   await expect(page.locator('#queue').getByRole('table')).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Version history' })).toBeVisible();
@@ -192,7 +267,7 @@ test('idle refresh continues after navigation and discovers new submissions', as
   await page.clock.install();
   await page.goto('/admin/');
   await page.locator('#queue').getByRole('link', { name: 'Rust test app', exact: true }).click();
-  await page.getByRole('link', { name: 'Sandstorm App Market' }).click();
+  await page.getByRole('link', { name: 'App Market' }).click();
   await expect(page.locator('#catalog-heading h1')).toBeFocused();
   expect((await request.post('/__test/submit', { data: '5' })).ok()).toBeTruthy();
   await page.clock.fastForward(30001);
@@ -409,7 +484,7 @@ test('app paths survive direct loads, reloads, and browser history', async ({ pa
   expect((await request.get(await publicPage.getAttribute('href'))).ok()).toBeTruthy();
   const preview = page.getByRole('link', { name: 'Preview listing' }).first();
   expect(await preview.evaluate(link => new URL(link.href).pathname)).toMatch(/^\/admin\/preview\//);
-  await page.getByRole('link', { name: 'Sandstorm App Market' }).click();
+  await page.getByRole('link', { name: 'App Market' }).click();
   await expect(page).toHaveURL(/\/admin\/$/);
   await page.goBack();
   await expect(page.locator('#app-detail h1')).toHaveText(app.name);
@@ -446,7 +521,7 @@ test('Sandstorm shell URL follows app navigation and restores the iframe on relo
   await page.reload();
   await expect(grain.locator('#app-detail h1')).toHaveText(app.name);
   await expect(grain.locator('#error')).toBeHidden();
-  await grain.getByRole('link', { name: 'Sandstorm App Market' }).click();
+  await grain.getByRole('link', { name: 'App Market' }).click();
   await expect(page).toHaveURL(/\/shell\/$/);
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/shell/${app.appId}/$`));

@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ app.name }} · Sandstorm Marketplace</title>
+    <title>{{ app.name }} · {{ branding.title }}</title>
     <link rel="stylesheet" href="{{ root }}assets/marketplace.css">
     <link rel="icon" href="{{ root }}assets/favicon.png" type="image/png">
   </head>
   <body>
-    <header class="masthead">
+    <header class="masthead" style="{{ branding.header_style() }}">
       {% if preview %}
-      <a class="site-title" href="{{ home_href }}"><img src="{{ root }}assets/sandstorm-logo.svg" width="48" height="48" alt=""><span>Sandstorm App Market</span></a>
+      <a class="site-title" href="{{ home_href }}"><img src="{{ root }}assets/sandstorm-logo.svg" width="48" height="48" alt=""><span>{{ branding.title }}</span></a>
       {% else %}
       {% include "brand.html" %}
       {% include "categories.html" %}

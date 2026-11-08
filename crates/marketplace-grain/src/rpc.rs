@@ -118,6 +118,7 @@ impl web::Server for Session {
                     "admin" => {
                         let releases = registry.queue()?;
                         let snapshot = AdminSnapshot {
+                            branding: registry.branding_settings()?,
                             homepage: if can_approve { Some(registry.homepage_settings(&releases)?) } else { None },
                             releases,
                             can_approve,
@@ -261,7 +262,11 @@ impl web::Server for Session {
                         _ => not_found(results.get()),
                     }
                 } else {
-                    if path == "homepage" {
+                    if path == "branding" {
+                        ensure!(body.len() <= 4096, "appearance settings too large");
+                        registry.update_branding(serde_json::from_slice(body)?)?;
+                        results.get().init_no_content();
+                    } else if path == "homepage" {
                         ensure!(body.len() <= 1024 * 1024, "homepage settings too large");
                         registry.update_homepage(serde_json::from_slice(body)?)?;
                         results.get().init_no_content();

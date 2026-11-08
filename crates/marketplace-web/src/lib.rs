@@ -20,6 +20,7 @@ use askama::Template;
 use axum::Router;
 use clap::{Parser, Subcommand};
 use marketplace_model::app_index::{AppDetailsForMarket, AppSummary, LoadedAppIndex};
+use marketplace_model::branding::Branding;
 use tower_http::compression::CompressionLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
@@ -46,6 +47,7 @@ enum Command {
 #[derive(Template)]
 #[template(path = "home.html")]
 struct HomeTemplate<'a> {
+    branding: Branding,
     show_welcome: bool,
     author_title: Option<String>,
     author_profile: Option<AuthorProfile>,
@@ -60,6 +62,7 @@ struct HomeTemplate<'a> {
 #[derive(Template)]
 #[template(path = "app.html")]
 struct AppTemplate<'a> {
+    branding: Branding,
     tags: Vec<TagChip>,
     app: &'a AppSummary,
     details: &'a AppDetailsForMarket,
@@ -209,6 +212,7 @@ fn render_app(
     experimental: bool,
 ) -> Result<String> {
     let mut template = app_template(app, details);
+    template.branding = Branding::load(&index.root)?;
     template.tags = build_tag_chips(index, None, "");
     template.experimental = experimental;
     template.package_url = join_url(package_base_url, &app.package_id);
@@ -218,12 +222,14 @@ fn render_app(
 /// Render a submitted release using the public listing template, with private
 /// downloads and embedded images. No files are published by this operation.
 pub fn render_preview(
+    branding: &Branding,
     app: &AppSummary,
     details: &AppDetailsForMarket,
     images: &BTreeMap<String, String>,
     public_download: bool,
 ) -> Result<String> {
     let mut template = app_template(app, details);
+    template.branding = branding.clone();
     template.preview = true;
     template.author_href = None;
     template.public_download = public_download;
@@ -242,6 +248,7 @@ pub fn render_preview(
 
 fn app_template<'a>(app: &'a AppSummary, details: &'a AppDetailsForMarket) -> AppTemplate<'a> {
     AppTemplate {
+        branding: Branding::default(),
         tags: Vec::new(),
         app,
         details,

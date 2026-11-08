@@ -23,6 +23,7 @@ use std::{
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminSnapshot {
+    pub branding: crate::branding::Settings,
     pub releases: Vec<ReviewRelease>,
     pub can_approve: bool,
     pub busy: bool,
@@ -750,6 +751,10 @@ impl Registry {
             catalog.join("homepage.json"),
             serde_json::to_vec(&homepage)?,
         )?;
+        fs::write(
+            catalog.join("branding.json"),
+            serde_json::to_vec(&self.branding_settings()?.branding)?,
+        )?;
         let generation = self.prepare_publication(&catalog)?;
         if let Err(error) = marketplace_web::publish::publish_generation(
             &catalog,
@@ -791,6 +796,7 @@ impl Registry {
             entry.app.created_at.clear();
         }
         marketplace_web::render_preview(
+            &self.branding_settings()?.branding,
             &entry.app,
             &entry.details,
             &entry.image_data_urls(),

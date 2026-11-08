@@ -1,6 +1,7 @@
 #![allow(clippy::extra_unused_lifetimes)]
 include!(concat!(env!("OUT_DIR"), "/schemas.rs"));
 pub mod audit;
+mod branding;
 mod catalog;
 mod homepage;
 pub mod ids;

@@ -5,7 +5,7 @@
 <link rel="icon" href="assets/favicon.png" type="image/png">
 </head><body>
 <header class="masthead">
-<a class="site-title" href="./" data-admin-navigation><img src="assets/sandstorm-logo.svg" width="48" height="48" alt=""><span>Sandstorm App Market Administration</span></a>
+<a class="site-title" href="./" data-admin-navigation><img src="assets/sandstorm-logo.svg" width="48" height="48" alt=""><span id="marketplace-title">App Market Administration</span></a>
 <nav class="admin-tabs" aria-label="Administration">
 <a href="apps/" data-admin-navigation data-tab="apps" aria-current="page">Apps <span id="pending-count" class="pending-count" hidden></span></a>
 <a href="setup" data-admin-navigation data-tab="setup" hidden>Setup</a>
@@ -37,6 +37,16 @@
 </section>
 <section id="setup" hidden aria-labelledby="setup-heading">
 <div class="toolbar catalog-heading"><h1 id="setup-heading" class="catalog-title">Setup</h1></div>
+<section class="card" id="appearance"><h2>Appearance</h2>
+<form id="appearance-form">
+<p><label for="appearance-title">Marketplace title</label><br><input id="appearance-title" type="text" required maxlength="80" value="App Market" data-write></p>
+<p><label for="appearance-color">Header color</label><br><input id="appearance-color" type="color" value="#552976" data-write></p>
+<p><label><input id="appearance-subheader" type="checkbox" data-write> Show subheader</label></p>
+<p class="meta">The header gradient is derived from this color. Saving updates the public site and administration header.</p>
+<button type="submit" class="primary" data-write>Save appearance</button>
+<button type="button" id="appearance-defaults" data-write>Use defaults</button>
+</form><p id="appearance-status" role="status"></p>
+</section>
 <section id="spk-import" class="card" hidden><h2>Import SPK packages</h2><p>Select one or more .spk files to submit for publication, just like spk publish. New releases require approval.</p><form id="spk-import-form"><label for="spk-import-files">SPK packages</label> <input id="spk-import-files" type="file" accept=".spk" multiple required><button id="spk-import-submit" class="primary">Import packages</button></form><p id="spk-import-progress" role="status"></p><ul id="spk-import-results"></ul></section>
 <section class="card" aria-labelledby="publishing-heading"><h2 id="publishing-heading">Web publishing</h2>
 <p>This marketplace publishes automatically as releases are approved and published. Its public site is accessible without signing in to Sandstorm.</p>

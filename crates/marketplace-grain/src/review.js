@@ -160,6 +160,8 @@ if (typeof document !== "undefined") {
   const keybaseProfiles = new Map();
   let notificationSending = false;
   let notificationDirty = false;
+  let appearanceDirty = false;
+  let appearanceRevision = 0;
   let signingKeys = { revision: 0, rules: [] };
   let signingKeyRevision = 0;
   let signingKeyMode = "create";
@@ -846,6 +848,18 @@ if (typeof document !== "undefined") {
         : "Not connected.";
       $("keybase").textContent = keybaseConnected ? "Reconnect Keybase" : "Connect Keybase";
       serverBusy = snapshot.busy;
+      const appearance = snapshot.branding;
+      if (appearance) {
+        $("marketplace-title").textContent = `${appearance.branding.title} Administration`;
+        document.title = `${appearance.branding.title} · Administration`;
+        document.querySelector(".masthead").setAttribute("style", appearance.headerStyle);
+        if (!appearanceDirty) {
+          $("appearance-title").value = appearance.branding.title;
+          $("appearance-color").value = appearance.branding.headerColor;
+          $("appearance-subheader").checked = !!appearance.branding.showSubheader;
+          appearanceRevision = appearance.revision;
+        }
+      }
       $("spk-import").hidden = !canApprove;
       $("import").hidden = !canApprove || serverBusy || items.length !== 0;
       if (canApprove && snapshot.signingKeys) {
@@ -1209,6 +1223,32 @@ if (typeof document !== "undefined") {
       notificationDirty = false;
       notice("message", "Notification settings saved.");
       await refresh();
+    });
+  };
+  $("appearance-form").oninput = () => { appearanceDirty = true; $("appearance-status").textContent = "Unsaved appearance changes."; };
+  $("appearance-defaults").onclick = () => {
+    $("appearance-title").value = "App Market";
+    $("appearance-color").value = "#552976";
+    $("appearance-subheader").checked = false;
+    appearanceDirty = true;
+    $("appearance-status").textContent = "Defaults selected. Save appearance to apply.";
+  };
+  $("appearance-form").onsubmit = async (event) => {
+    event.preventDefault();
+    await runAction(async () => {
+      $("appearance-status").textContent = "Saving and publishing appearance…";
+      try {
+        await request("branding", JSON.stringify({ revision: appearanceRevision, branding: {
+          title: $("appearance-title").value.trim(), headerColor: $("appearance-color").value,
+          showSubheader: $("appearance-subheader").checked,
+        }}));
+        appearanceDirty = false;
+        await refresh();
+        $("appearance-status").textContent = "Appearance saved and public site updated.";
+      } catch (error) {
+        $("appearance-status").textContent = "Appearance was not published. Your edits are kept; retry saving or reload if another administrator changed the settings.";
+        throw error;
+      }
     });
   };
   $("rebuild-public-site").onclick = () => runAction(async () => {

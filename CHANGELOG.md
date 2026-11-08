@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.11 — 2026-11-08
+
+- Clarify the appearance changes on upgrade: the title defaults to "App Market"
+  and the introduction banner and installation instruction are hidden by default.
+  Configure your preferred title, header color, and Show subheader option in the
+  Setup tab under Appearance, then save to apply your changes. Existing saved
+  appearance settings are preserved.
+
+## 0.4.10 — 2026-11-08
+
+- Add a Show subheader checkbox under Setup → Appearance, disabled by default.
+  It controls the Sandstorm introduction banner and installation instruction.
+- This changes the default appearance of existing marketplaces on upgrade:
+  both subheader messages are hidden. You may need to configure your preferred
+  appearance in the Setup tab under Appearance, including the title, header
+  color, and Show subheader option. Save appearance to apply your changes.
+
+## 0.4.9 — 2026-11-08
+
+- Add per-marketplace title and header color settings under Setup → Appearance.
+  The title defaults to "App Market" and applies to page titles and headings.
+- Derive header gradient and control colors from one base color, preserving the
+  existing purple gradient at #552976 and choosing light or dark header text.
+- Persist appearance settings across restarts and republish the site when saved.
+
 ## 0.4.8 — 2026-11-08
 
 - Add icon for the installed app and marketplace listing.
