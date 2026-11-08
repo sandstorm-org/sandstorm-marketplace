@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.11 — 2026-11-08
+## 0.5.0 — 2026-11-08
 
 - Clarify the appearance changes on upgrade: the title defaults to "App Market"
   and the introduction banner and installation instruction are hidden by default.
