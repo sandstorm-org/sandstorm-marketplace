@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1 — Unreleased
+## 0.5.1 — 2026-11-08
 
 - Automatically reject earlier, lower-build pending releases when a newer release
   is approved, including withdrawn releases. Preserve the author's withdrawal.
