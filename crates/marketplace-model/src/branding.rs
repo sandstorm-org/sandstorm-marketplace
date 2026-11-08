@@ -3,7 +3,8 @@ use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
-pub const DEFAULT_COLOR: &str = "#552976";
+pub const DEFAULT_COLOR: &str = "#222222";
+const PALETTE_REFERENCE_COLOR: &str = "#552976";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -55,7 +56,7 @@ impl Branding {
     /// saturation/lightness relative to its base for other chosen colors.
     pub fn header_style(&self) -> String {
         let base = hsl(rgb(&self.header_color).unwrap_or_else(|| rgb(DEFAULT_COLOR).unwrap()));
-        let original = hsl(rgb(DEFAULT_COLOR).unwrap());
+        let original = hsl(rgb(PALETTE_REFERENCE_COLOR).unwrap());
         let colors: Vec<_> = [
             "#723086", "#552976", "#603281", "#4e2e77", "#7e3d92", "#924da7", "#a170af",
         ]
@@ -161,8 +162,18 @@ fn foreground(colors: &[[u8; 3]]) -> &'static str {
 mod tests {
     use super::*;
     #[test]
-    fn default_reproduces_original_gradient() {
-        assert!(Branding::default().header_style().starts_with("--header-gradient:linear-gradient(165deg, #723086, #552976 60%, #603281 60.1%, #4e2e77);"));
+    fn purple_still_reproduces_original_gradient() {
+        let branding = Branding {
+            header_color: PALETTE_REFERENCE_COLOR.into(),
+            ..Branding::default()
+        };
+        assert!(branding.header_style().starts_with("--header-gradient:linear-gradient(165deg, #723086, #552976 60%, #603281 60.1%, #4e2e77);"));
+    }
+    #[test]
+    fn default_header_is_charcoal() {
+        let branding = Branding::default();
+        assert_eq!(branding.header_color, "#222222");
+        assert!(branding.header_style().starts_with("--header-gradient:linear-gradient(165deg, #272727, #222222 60%, #262626 60.1%, #232323);"));
     }
     #[test]
     fn existing_settings_default_to_no_subheader() {

@@ -26,6 +26,12 @@ body[data-busy="true"] button:disabled { cursor: wait; }
 .danger:hover { background: #fff0f3; border-color: #b96a7b; }
 input, select, textarea { border: 1px solid #cfb5d6; border-radius: 0; padding: .5rem .7rem; background: white; color: var(--ink); }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+.appearance-color-fields { display: inline-flex; align-items: center; gap: .6rem; }
+#appearance-color { box-sizing: border-box; width: 3.5rem; height: 2.75rem; flex: 0 0 3.5rem; padding: .2rem; cursor: pointer; }
+#appearance-color::-webkit-color-swatch-wrapper { padding: 0; }
+#appearance-color::-webkit-color-swatch { border: 0; }
+#appearance-color::-moz-color-swatch { border: 0; }
+#appearance-color-hex { box-sizing: border-box; width: 8rem; height: 2.75rem; font-family: monospace; }
 input[type=search] { width: 24rem; max-width: 100%; }
 textarea { display: block; width: 100%; min-height: 110px; margin: .5rem 0 1.25rem; }
 .toolbar, .actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }

@@ -856,6 +856,7 @@ if (typeof document !== "undefined") {
         if (!appearanceDirty) {
           $("appearance-title").value = appearance.branding.title;
           $("appearance-color").value = appearance.branding.headerColor;
+          $("appearance-color-hex").value = appearance.branding.headerColor;
           $("appearance-subheader").checked = !!appearance.branding.showSubheader;
           appearanceRevision = appearance.revision;
         }
@@ -1225,21 +1226,35 @@ if (typeof document !== "undefined") {
       await refresh();
     });
   };
-  $("appearance-form").oninput = () => { appearanceDirty = true; $("appearance-status").textContent = "Unsaved appearance changes."; };
+  function appearanceChanged() {
+    appearanceDirty = true;
+    $("appearance-status").textContent = "Unsaved appearance changes.";
+  }
+  $("appearance-form").oninput = appearanceChanged;
+  $("appearance-color").oninput = $("appearance-color").onchange = () => {
+    $("appearance-color-hex").value = $("appearance-color").value;
+    appearanceChanged();
+  };
+  $("appearance-color-hex").oninput = () => {
+    const hex = $("appearance-color-hex").value;
+    if (/^#[0-9a-f]{6}$/i.test(hex)) $("appearance-color").value = hex.toLowerCase();
+  };
   $("appearance-defaults").onclick = () => {
     $("appearance-title").value = "App Market";
-    $("appearance-color").value = "#552976";
+    $("appearance-color").value = "#222222";
+    $("appearance-color-hex").value = "#222222";
     $("appearance-subheader").checked = false;
     appearanceDirty = true;
     $("appearance-status").textContent = "Defaults selected. Save appearance to apply.";
   };
   $("appearance-form").onsubmit = async (event) => {
     event.preventDefault();
+    if (!$("appearance-form").reportValidity()) return;
     await runAction(async () => {
       $("appearance-status").textContent = "Saving and publishing appearance…";
       try {
         await request("branding", JSON.stringify({ revision: appearanceRevision, branding: {
-          title: $("appearance-title").value.trim(), headerColor: $("appearance-color").value,
+          title: $("appearance-title").value.trim(), headerColor: $("appearance-color-hex").value.toLowerCase(),
           showSubheader: $("appearance-subheader").checked,
         }}));
         appearanceDirty = false;

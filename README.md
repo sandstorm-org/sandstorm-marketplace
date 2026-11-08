@@ -114,15 +114,17 @@ Each marketplace has independent appearance settings under **Setup → Appearanc
 The title defaults to **App Market** and is used in the public header, browser
 page titles, listing previews, and the administration header. Choose one header
 color; the gradient and header controls are derived from it, with light or dark
-text selected for readability. The default `#552976` reproduces the original
-purple gradient. **Save appearance** persists the settings and republishes the
+text selected for readability. The default is charcoal (`#222222`); choosing `#552976` reproduces the original
+purple gradient. The color picker and editable hex field show the current color
+and stay in sync; hex values must include `#` and six digits.
+**Save appearance** persists the settings and republishes the
 public site. **Use defaults** fills the defaults; save to apply them. Only
 approvers can change appearance. Existing grains receive the defaults on upgrade.
 **Show subheader**, off by default, enables the Sandstorm introduction banner
 and the "Install any of the apps below with just one click" message.
 
 Static catalog sources may include a `branding.json` file with
-`{"title":"App Market","headerColor":"#552976","showSubheader":false}`. The title must be 1–80
+`{"title":"App Market","headerColor":"#222222","showSubheader":false}`. The title must be 1–80
 characters and the color must be a six-digit hex value.
 
 1. Install `build/marketplace.spk` and create a marketplace grain.

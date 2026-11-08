@@ -46,7 +46,7 @@ test('subheader defaults off and toggles both messages persistently', async ({ p
 test('appearance configures headers, titles, previews and public pages', async ({ page, request }) => {
   await page.goto('/admin/setup');
   await expect(page.getByLabel('Marketplace title')).toHaveValue('App Market');
-  await expect(page.getByLabel('Header color')).toHaveValue('#552976');
+  await expect(page.getByLabel('Header color')).toHaveValue('#222222');
   await page.getByLabel('Marketplace title').fill('Community <Apps> & Tools');
   await page.getByLabel('Header color').fill('#207080');
   await page.getByRole('button', {name:'Save appearance', exact:true}).click();
@@ -70,9 +70,38 @@ test('appearance configures headers, titles, previews and public pages', async (
   }
   await page.goto('/admin/setup');
   await page.getByRole('button', {name:'Use defaults', exact:true}).click();
+  await expect(page.getByLabel('Header color')).toHaveValue('#222222');
   await page.getByRole('button', {name:'Save appearance', exact:true}).click();
   await expect(page.locator('#appearance-status')).toHaveText('Appearance saved and public site updated.');
   await expect(page).toHaveTitle('App Market · Administration');
+});
+
+test('color picker shows its default, syncs hex input, and validates before saving', async ({ page }) => {
+  await page.goto('/admin/setup');
+  const picker = page.getByLabel('Header color', {exact:true});
+  const hex = page.getByLabel('Hex color', {exact:true});
+  await expect(picker).toHaveValue('#222222');
+  await expect(hex).toHaveValue('#222222');
+  const bounds = await picker.boundingBox();
+  expect(bounds.width).toBeGreaterThanOrEqual(50);
+  expect(bounds.height).toBeGreaterThanOrEqual(40);
+  await picker.fill('#207080');
+  await expect(hex).toHaveValue('#207080');
+  await hex.fill('#AABBCC');
+  await expect(picker).toHaveValue('#aabbcc');
+  await hex.fill('#12');
+  await page.getByRole('button', {name:'Save appearance',exact:true}).click();
+  expect(await hex.evaluate(el=>el.checkValidity())).toBe(false);
+  await expect(page.locator('#appearance-status')).toHaveText('Unsaved appearance changes.');
+  await hex.fill('#AABBCC');
+  await page.getByRole('button', {name:'Save appearance',exact:true}).click();
+  await expect(page.locator('#appearance-status')).toHaveText('Appearance saved and public site updated.');
+  await page.reload();
+  await expect(hex).toHaveValue('#aabbcc');
+  await expect(picker).toHaveValue('#aabbcc');
+  await page.getByRole('button', {name:'Use defaults',exact:true}).click();
+  await expect(hex).toHaveValue('#222222');
+  await expect(picker).toHaveValue('#222222');
 });
 
 test('appearance rejects unauthorized, malformed and stale edits', async ({ page, request }) => {

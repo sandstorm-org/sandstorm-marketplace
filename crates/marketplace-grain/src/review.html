@@ -40,7 +40,7 @@
 <section class="card" id="appearance"><h2>Appearance</h2>
 <form id="appearance-form">
 <p><label for="appearance-title">Marketplace title</label><br><input id="appearance-title" type="text" required maxlength="80" value="App Market" data-write></p>
-<p><label for="appearance-color">Header color</label><br><input id="appearance-color" type="color" value="#552976" data-write></p>
+<p><label for="appearance-color">Header color</label><br><span class="appearance-color-fields"><input id="appearance-color" type="color" value="#222222" data-write><input id="appearance-color-hex" type="text" aria-label="Hex color" value="#222222" pattern="#[0-9a-fA-F]{6}" maxlength="7" required spellcheck="false" autocapitalize="off" autocomplete="off" title="Enter a six-digit hex color, such as #222222" data-write></span></p>
 <p><label><input id="appearance-subheader" type="checkbox" data-write> Show subheader</label></p>
 <p class="meta">The header gradient is derived from this color. Saving updates the public site and administration header.</p>
 <button type="submit" class="primary" data-write>Save appearance</button>
